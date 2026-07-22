@@ -1,0 +1,31 @@
+{
+  "_comment": "Golden set entry template. Copy this file, rename it, and fill in all fields. Remove _comment before committing.",
+
+  "run_id": "FILL_IN_UUID",
+  "ticker": "AAPL",
+  "pipeline_version": "0.1.0",
+
+  "window_start": "2024-01-01",
+  "window_end": "2024-03-31",
+
+  "direction": "bullish",
+  "magnitude_bucket": "3-8%",
+  "confidence": 0.80,
+  "dominant_drivers": ["fundamental", "sentiment"],
+  "invalidation_condition": "If EPS misses consensus by more than 5% or revenue guidance is lowered below $90B, thesis is invalidated.",
+  "hold_window_bucket": "weeks",
+  "thesis": "Strong earnings beat with upward guidance revision expected to drive multiple expansion. Sentiment is constructive ahead of the quarter.",
+
+  "actual_direction": "bullish",
+  "actual_magnitude_pct": 6.2,
+  "hit": true,
+  "price_target_error_pct": -10.9,
+  "timing_result": "on-time",
+
+  "guardrail_retries": 0,
+  "pipeline_cancelled": false,
+
+  "dominant_driver_label_method": "manual",
+  "data_quality_score": 0.90,
+  "notes": "Optional curation notes — why this entry was selected, any edge cases."
+}

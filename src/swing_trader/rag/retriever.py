@@ -1,0 +1,213 @@
+"""RAG retriever — four-stage pipeline: hard filter → embed search → rerank → sentiment tag.
+
+Usage:
+    block = await retrieve(ticker="AAPL", window_start=date(2024,1,1), window_end=date(2024,3,31))
+    prompt_text = block.render()
+"""
+from __future__ import annotations
+
+import json
+from datetime import date
+from typing import cast
+
+import anthropic
+from openai import AsyncOpenAI
+
+from swing_trader.rag.store import get_vector_store
+from swing_trader.schemas.pipeline import QualItem, QualitativeBlock, SentimentLabel
+
+_openai = AsyncOpenAI()
+_anthropic = anthropic.AsyncAnthropic()
+
+_EMBED_MODEL = "text-embedding-3-small"
+_SENTIMENT_MODEL = "claude-haiku-4-5-20251001"
+_RERANKER_SCORE_THRESHOLD = 0.3
+_MAX_QUAL_BLOCK_TOKENS = 1500
+_SUMMARY_MAX_CHARS = 800  # ~200 tokens
+
+
+async def retrieve(
+    ticker: str,
+    window_start: date,
+    window_end: date,
+    thesis_hint: str | None = None,
+    top_k_before_rerank: int = 50,
+    top_k_after_rerank: int = 10,
+) -> QualitativeBlock:
+    """Run the full four-stage retrieval pipeline and return a QualitativeBlock."""
+    store = get_vector_store()
+
+    # Stage 1 — hard metadata filter (applied inside vector store search)
+    hard_filter = {
+        "ticker": ticker.upper(),
+        "date_gte": str(window_start),
+        "date_lte": str(window_end),
+        "active": True,
+    }
+
+    # Stage 2 — embedding search
+    query_text = f"{ticker} stock price movement drivers {window_start} to {window_end}"
+    if thesis_hint:
+        query_text += f". Focus: {thesis_hint}"
+
+    query_embedding = await _embed(query_text)
+    raw_results = store.search(query_embedding, hard_filter, top_k=top_k_before_rerank)
+    chunks_retrieved = len(raw_results)
+
+    if not raw_results:
+        return QualitativeBlock(
+            ticker=ticker,
+            window_start=window_start,
+            window_end=window_end,
+            chunks_retrieved=0,
+            chunks_used=0,
+        )
+
+    # Stage 3 — cross-encoder rerank
+    reranked = _rerank(query_text, raw_results, top_n=top_k_after_rerank)
+
+    # Drop chunks below the relevance threshold
+    reranked = [r for r in reranked if r["rerank_score"] >= _RERANKER_SCORE_THRESHOLD]
+
+    # Deduplicate: same file → keep highest-scoring chunk
+    reranked = _deduplicate(reranked)
+
+    if not reranked:
+        return QualitativeBlock(
+            ticker=ticker,
+            window_start=window_start,
+            window_end=window_end,
+            chunks_retrieved=chunks_retrieved,
+            chunks_used=0,
+        )
+
+    # Stage 4 — sentiment tag pass (for any chunks missing sentiment_label)
+    reranked = await _ensure_sentiment(ticker, reranked)
+
+    # Build QualItems
+    items = [_to_qual_item(r) for r in reranked]
+
+    # Truncate to token budget (rough: 1 token ≈ 4 chars)
+    items = _truncate_to_budget(items, _MAX_QUAL_BLOCK_TOKENS)
+
+    return QualitativeBlock(
+        ticker=ticker,
+        window_start=window_start,
+        window_end=window_end,
+        chunks_retrieved=chunks_retrieved,
+        chunks_used=len(items),
+        items=items,
+    )
+
+
+async def _embed(text: str) -> list[float]:
+    resp = await _openai.embeddings.create(model=_EMBED_MODEL, input=[text])
+    return resp.data[0].embedding
+
+
+def _rerank(query: str, results: list[dict], top_n: int) -> list[dict]:
+    """Cross-encoder rerank using sentence-transformers."""
+    try:
+        from sentence_transformers import CrossEncoder
+        model = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
+        pairs = [(query, r["content"]) for r in results]
+        scores = model.predict(pairs)
+        for r, score in zip(results, scores):
+            r["rerank_score"] = float(score)
+        return sorted(results, key=lambda x: x["rerank_score"], reverse=True)[:top_n]
+    except ImportError:
+        # Fall back to embedding similarity score if sentence-transformers not installed
+        for r in results:
+            r["rerank_score"] = r.get("score", 0.0)
+        return sorted(results, key=lambda x: x["rerank_score"], reverse=True)[:top_n]
+
+
+def _deduplicate(results: list[dict]) -> list[dict]:
+    """Keep only the highest-scoring chunk per source file."""
+    seen: dict[str, dict] = {}
+    for r in results:
+        fp = r.get("metadata", {}).get("file_path", "")
+        if fp not in seen or r["rerank_score"] > seen[fp]["rerank_score"]:
+            seen[fp] = r
+    return list(seen.values())
+
+
+async def _ensure_sentiment(ticker: str, results: list[dict]) -> list[dict]:
+    """Run LLM sentiment tagging on any chunks missing sentiment_label."""
+    untagged = [r for r in results if not r.get("metadata", {}).get("sentiment_label")]
+    if not untagged:
+        return results
+
+    texts = [r["content"][:400] for r in untagged]  # truncate for API call
+    prompt = (
+        f"Ticker: {ticker}\n\n"
+        f"Tag each item below as it relates to the stock's price outlook. "
+        f"Return a JSON array in the same order as the items.\n"
+        f"Items:\n{json.dumps(texts)}\n\n"
+        f"For each item return exactly: "
+        f'{{\"sentiment_label\": \"bullish|bearish|neutral\", \"sentiment_reason\": \"one sentence\"}}'
+    )
+
+    try:
+        response = await _anthropic.messages.create(
+            model=_SENTIMENT_MODEL,
+            max_tokens=512,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        raw = response.content[0].text.strip()
+        # Extract JSON array
+        start = raw.find("[")
+        end = raw.rfind("]") + 1
+        tags = json.loads(raw[start:end])
+
+        for r, tag in zip(untagged, tags):
+            r.setdefault("metadata", {})
+            r["metadata"]["sentiment_label"] = tag.get("sentiment_label", "neutral")
+            r["metadata"]["sentiment_reason"] = tag.get("sentiment_reason", "")
+    except Exception:
+        # Fail silently — missing sentiment is not fatal
+        for r in untagged:
+            r.setdefault("metadata", {})
+            r["metadata"].setdefault("sentiment_label", "neutral")
+            r["metadata"].setdefault("sentiment_reason", "")
+
+    return results
+
+
+def _to_qual_item(r: dict) -> QualItem:
+    meta = r.get("metadata", {})
+    content = r.get("content", "")
+    summary = content[:_SUMMARY_MAX_CHARS]
+    if len(content) > _SUMMARY_MAX_CHARS:
+        summary = summary.rsplit(" ", 1)[0] + "…"
+
+    return QualItem(
+        source_type=meta.get("source_type", "news"),
+        date=meta.get("date", ""),
+        source=meta.get("source", ""),
+        sentiment_label=cast(SentimentLabel, meta.get("sentiment_label", "neutral")),
+        sentiment_reason=meta.get("sentiment_reason", ""),
+        summary=summary,
+        relevance_score=r.get("rerank_score", 0.0),
+    )
+
+
+def _truncate_to_budget(items: list[QualItem], max_tokens: int) -> list[QualItem]:
+    """Truncate items to fit within the token budget.
+
+    Priority order: analyst > news > macro > social (as per spec).
+    """
+    priority = {"analyst": 0, "news": 1, "macro": 2, "social": 3}
+    items_sorted = sorted(items, key=lambda x: priority.get(x.source_type, 4))
+
+    budget_chars = max_tokens * 4  # rough
+    kept = []
+    used = 0
+    for item in items_sorted:
+        size = len(item.summary) + len(item.sentiment_reason) + 50
+        if used + size > budget_chars:
+            break
+        kept.append(item)
+        used += size
+
+    return kept

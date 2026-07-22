@@ -28,6 +28,24 @@ yarn-error.log*
 .env*.local
 .env
 
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+.venv/
+venv/
+
+# Cache dirs (API response cache — safe to regenerate)
+cache/
+
+# Vector store local data
+.chroma/
+
+# Test output
+.pytest_cache/
+.ruff_cache/
+
 # vercel
 .vercel
 
