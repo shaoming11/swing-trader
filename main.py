@@ -1,0 +1,115 @@
+"""Entry point for the swing-trader pipeline.
+
+Usage:
+    python main.py AAPL 2024-01-01 2024-03-31
+    python main.py TSLA 2024-06-01 2024-09-30 --run-type backfill
+"""
+from __future__ import annotations
+
+import argparse
+import asyncio
+import json
+import logging
+from datetime import date
+
+from dotenv import load_dotenv
+
+load_dotenv()
+
+from swing_trader.observability.metrics import start_metrics_server
+from swing_trader.data_pull.node import data_pull_node
+from swing_trader.rag.node import rag_retrieval_node
+from swing_trader.state import initial_state
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s  %(levelname)-8s  %(name)s  %(message)s",
+)
+log = logging.getLogger("swing_trader")
+
+
+async def run_pipeline(
+    ticker: str,
+    window_start: date,
+    window_end: date,
+    run_type: str = "live",
+    user_id: str | None = None,
+    thesis_hint: str | None = None,
+) -> dict:
+    state = initial_state(
+        ticker=ticker,
+        window_start=window_start,
+        window_end=window_end,
+        run_type=run_type,
+        user_id=user_id,
+        thesis_hint=thesis_hint,
+    )
+
+    log.info("run_id=%s  ticker=%s  window=%s→%s", state["run_id"], ticker, window_start, window_end)
+
+    state = await data_pull_node(state)
+    log.info("data_pull done  gaps=%s", len(state["numeric_block"].data_gaps) if state["numeric_block"] else "?")
+
+    state = await rag_retrieval_node(state)
+    log.info(
+        "rag done  chunks_retrieved=%s  chunks_used=%s",
+        state["qualitative_block"].chunks_retrieved if state["qualitative_block"] else 0,
+        state["qualitative_block"].chunks_used if state["qualitative_block"] else 0,
+    )
+
+    if state.get("warnings"):
+        for w in state["warnings"]:
+            log.warning(w)
+
+    return state
+
+
+def _parse_date(s: str) -> date:
+    return date.fromisoformat(s)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Swing-trader pipeline")
+    parser.add_argument("ticker", help="Stock ticker, e.g. AAPL")
+    parser.add_argument("window_start", type=_parse_date, help="Window start date YYYY-MM-DD")
+    parser.add_argument("window_end", type=_parse_date, help="Window end date YYYY-MM-DD")
+    parser.add_argument("--run-type", default="live", choices=["live", "backfill", "eval"])
+    parser.add_argument("--user-id", default=None)
+    parser.add_argument("--thesis-hint", default=None)
+    parser.add_argument("--metrics-port", type=int, default=9090)
+    parser.add_argument("--no-metrics", action="store_true", help="Skip starting the Prometheus server")
+    args = parser.parse_args()
+
+    if not args.no_metrics:
+        import os
+        os.environ.setdefault("METRICS_PORT", str(args.metrics_port))
+        start_metrics_server()
+        log.info("Prometheus metrics on :%s/metrics", args.metrics_port)
+
+    state = asyncio.run(
+        run_pipeline(
+            ticker=args.ticker,
+            window_start=args.window_start,
+            window_end=args.window_end,
+            run_type=args.run_type,
+            user_id=args.user_id,
+            thesis_hint=args.thesis_hint,
+        )
+    )
+
+    print("\n── Numeric block ──────────────────────────────────────────")
+    if state["numeric_block"]:
+        print(state["numeric_block"].rendered_text)
+    else:
+        print("(none)")
+
+    print("\n── Qualitative block ──────────────────────────────────────")
+    if state["qualitative_block"]:
+        for item in state["qualitative_block"].items:
+            print(f"  [{item.relevance_score:.2f}] {item.date}  {item.source}  {item.text[:120]}…")
+    else:
+        print("(none)")
+
+
+if __name__ == "__main__":
+    main()

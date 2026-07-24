@@ -1,0 +1,11 @@
+exactly what data to gather from which source
+
+generating datasets of each kind
+corpus generator for rag
+entire rag pipeline
+observability across both pipelines
+
+the visual for human eval + observing eval process + observing entire pipeline
+
+next steps
+- make it cheaper

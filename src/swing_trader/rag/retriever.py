@@ -10,17 +10,9 @@ import json
 from datetime import date
 from typing import cast
 
-import anthropic
-from openai import AsyncOpenAI
-
+from swing_trader.clients import EMBED_MODEL, LLM_FAST_MODEL, get_embed_client, get_llm_client
 from swing_trader.rag.store import get_vector_store
 from swing_trader.schemas.pipeline import QualItem, QualitativeBlock, SentimentLabel
-
-_openai = AsyncOpenAI()
-_anthropic = anthropic.AsyncAnthropic()
-
-_EMBED_MODEL = "text-embedding-3-small"
-_SENTIMENT_MODEL = "claude-haiku-4-5-20251001"
 _RERANKER_SCORE_THRESHOLD = 0.3
 _MAX_QUAL_BLOCK_TOKENS = 1500
 _SUMMARY_MAX_CHARS = 800  # ~200 tokens
@@ -101,7 +93,8 @@ async def retrieve(
 
 
 async def _embed(text: str) -> list[float]:
-    resp = await _openai.embeddings.create(model=_EMBED_MODEL, input=[text])
+    client = get_embed_client()
+    resp = await client.embeddings.create(model=EMBED_MODEL, input=[text])
     return resp.data[0].embedding
 
 
@@ -149,12 +142,13 @@ async def _ensure_sentiment(ticker: str, results: list[dict]) -> list[dict]:
     )
 
     try:
-        response = await _anthropic.messages.create(
-            model=_SENTIMENT_MODEL,
+        client = get_llm_client()
+        response = await client.chat.completions.create(
+            model=LLM_FAST_MODEL,
             max_tokens=512,
             messages=[{"role": "user", "content": prompt}],
         )
-        raw = response.content[0].text.strip()
+        raw = response.choices[0].message.content.strip()
         # Extract JSON array
         start = raw.find("[")
         end = raw.rfind("]") + 1

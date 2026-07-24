@@ -71,6 +71,19 @@ class _ChromaStore:
                 "metadata": meta,
                 "score": 1.0 - float(dist),  # cosine distance → similarity
             })
+        # Post-filter by date (ISO strings sort lexicographically — no numeric cast needed)
+        date_gte = filter.get("date_gte")
+        date_lte = filter.get("date_lte")
+        if date_gte or date_lte:
+            filtered = []
+            for r in out:
+                d = r["metadata"].get("date", "")
+                if date_gte and d < date_gte:
+                    continue
+                if date_lte and d > date_lte:
+                    continue
+                filtered.append(r)
+            return filtered
         return out
 
     def file_is_indexed(self, file_path: str) -> bool:
@@ -85,9 +98,22 @@ class _ChromaStore:
 
 # ── Qdrant (production) ───────────────────────────────────────────────────────
 
+_EMBED_VECTOR_SIZES = {
+    "nomic-embed-text": 768,
+    "mxbai-embed-large": 1024,
+    "text-embedding-3-small": 1536,
+    "text-embedding-3-large": 3072,
+}
+
+
+def _vector_size() -> int:
+    import os
+    model = os.getenv("EMBED_MODEL", "nomic-embed-text")
+    return _EMBED_VECTOR_SIZES.get(model, 768)
+
+
 class _QdrantStore:
     _COLLECTION = "swing_trader_corpus"
-    _VECTOR_SIZE = 1536  # text-embedding-3-small
 
     def __init__(self):
         from qdrant_client import QdrantClient
@@ -101,7 +127,7 @@ class _QdrantStore:
             self._client.create_collection(
                 collection_name=self._COLLECTION,
                 vectors_config=VectorParams(
-                    size=self._VECTOR_SIZE, distance=Distance.COSINE
+                    size=_vector_size(), distance=Distance.COSINE
                 ),
             )
 
@@ -161,14 +187,15 @@ class _QdrantStore:
 # ── Filter builders ───────────────────────────────────────────────────────────
 
 def _build_chroma_where(filter: dict) -> dict:
-    """Convert our generic filter dict to Chroma's $and/$or where format."""
+    """Convert our generic filter dict to Chroma's $and/$or where format.
+
+    Date range filters are intentionally excluded here — ChromaDB's $gte/$lte
+    operators require numeric values, but dates are stored as ISO strings.
+    Date filtering is done in Python after retrieval instead.
+    """
     conditions = []
     if "ticker" in filter:
         conditions.append({"tickers": {"$contains": filter["ticker"]}})
-    if "date_gte" in filter:
-        conditions.append({"date": {"$gte": filter["date_gte"]}})
-    if "date_lte" in filter:
-        conditions.append({"date": {"$lte": filter["date_lte"]}})
     if "active" in filter:
         conditions.append({"active": {"$eq": filter["active"]}})
 

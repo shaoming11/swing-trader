@@ -110,11 +110,21 @@ LAYER2_GATE_TOTAL = Counter(
 )
 
 # ── Cost table ────────────────────────────────────────────────────────────────
+# Ollama models run locally — cost is $0. Table kept for when switching back
+# to hosted providers; unknown models default to $0.
 
-_MODEL_COST_PER_1K = {
+_MODEL_COST_PER_1K: dict[str, dict[str, float]] = {
+    # Ollama (local)
+    "llama3.1:70b":      {"input": 0.0, "output": 0.0},
+    "llama3.1:8b":       {"input": 0.0, "output": 0.0},
+    "llama3.2:3b":       {"input": 0.0, "output": 0.0},
+    "nomic-embed-text":  {"input": 0.0, "output": 0.0},
+    # Anthropic (restore when switching back)
     "claude-opus-4-6":   {"input": 0.015,   "output": 0.075},
     "claude-sonnet-4-6": {"input": 0.003,   "output": 0.015},
-    "claude-haiku-4-5":  {"input": 0.00025, "output": 0.00125},
+    "claude-haiku-4-5-20251001": {"input": 0.00025, "output": 0.00125},
+    # OpenAI (restore when switching back)
+    "text-embedding-3-small": {"input": 0.00002, "output": 0.0},
 }
 
 

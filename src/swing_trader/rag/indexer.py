@@ -16,8 +16,8 @@ from typing import Any
 
 import frontmatter
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from openai import AsyncOpenAI
 
+from swing_trader.clients import EMBED_MODEL, get_embed_client
 from swing_trader.rag.store import get_vector_store
 
 _CORPUS_ROOT = Path(os.getenv("CORPUS_DIR", "corpus"))
@@ -31,9 +31,6 @@ _splitter = RecursiveCharacterTextSplitter(
     length_function=len,
     separators=["\n\n", "\n", ". ", " ", ""],
 )
-
-_openai = AsyncOpenAI()
-_EMBED_MODEL = "text-embedding-3-small"
 
 
 async def index_new_files(corpus_root: Path | None = None) -> int:
@@ -109,12 +106,9 @@ async def _index_file(filepath: Path, store) -> None:
 
 
 async def _embed_batch(texts: list[str]) -> list[list[float]]:
-    """Embed a list of texts using text-embedding-3-small. Caches by content hash."""
-    # Simple in-memory dedup within a single call; disk caching handled by store
-    response = await _openai.embeddings.create(
-        model=_EMBED_MODEL,
-        input=texts,
-    )
+    """Embed a list of texts via the configured embedding client."""
+    client = get_embed_client()
+    response = await client.embeddings.create(model=EMBED_MODEL, input=texts)
     return [item.embedding for item in response.data]
 
 
