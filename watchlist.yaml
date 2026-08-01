@@ -1,0 +1,11 @@
+defaults:
+  window_days: 90
+  run_type: live
+  delay_seconds: 30
+
+tickers:
+  - AAPL
+  - MSFT
+  - GOOG
+  - AMZN
+  - TSLA

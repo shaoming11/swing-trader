@@ -91,6 +91,20 @@ def set_fomc(year: int, data: Any) -> None:
     _write(path, data)
 
 
+# ── Quarter-level cache (fundamentals + macro merged per quarter) ─────────────
+
+def get_quarter(ticker: str, quarter: str) -> Any | None:
+    """quarter format: '2024Q4'. Returns combined {fundamentals, macro} dict or None."""
+    path = _CACHE_ROOT / "quarters" / f"{ticker}_{quarter}.json"
+    ttl = None if _is_historical(_quarter_end(quarter)) else _TTL_SECONDS
+    return _read(path, ttl)
+
+
+def set_quarter(ticker: str, quarter: str, data: Any) -> None:
+    path = _CACHE_ROOT / "quarters" / f"{ticker}_{quarter}.json"
+    _write(path, data)
+
+
 def _quarter_end(quarter: str) -> date:
     """'2024Q1' -> date(2024, 3, 31)"""
     year, q = int(quarter[:4]), int(quarter[5])

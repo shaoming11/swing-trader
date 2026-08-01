@@ -3,16 +3,20 @@
 Start:
     uvicorn api.main:app --reload --port 8000
 
-Requires DATABASE_URL env var pointing at the Postgres eval store.
+Loads .env automatically via python-dotenv so the server works without manually
+exporting variables in the shell.
 """
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
 
+from dotenv import load_dotenv
 from fastapi import FastAPI
+
+load_dotenv()
 from fastapi.middleware.cors import CORSMiddleware
 
-from api.routes import eval_routes, runs
+from api.routes import corpus, eval_routes, runs
 
 
 @asynccontextmanager
@@ -38,6 +42,7 @@ app.add_middleware(
 
 app.include_router(runs.router, prefix="/runs", tags=["runs"])
 app.include_router(eval_routes.router, prefix="/eval", tags=["eval"])
+app.include_router(corpus.router, prefix="/corpus", tags=["corpus"])
 
 
 @app.get("/health")

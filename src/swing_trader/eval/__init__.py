@@ -6,6 +6,9 @@ from swing_trader.eval.harness import (
     regression_comparison,
     run_retrieval_eval,
 )
+from swing_trader.eval.metrics import fetch_ground_truth, score_run
+from swing_trader.eval.benchmarks import build_quarter_report, BENCHMARKS
+from swing_trader.eval.self_improve import run_eval_loop
 
 __all__ = [
     "calibration_curve",
@@ -14,4 +17,9 @@ __all__ = [
     "timing_distribution",
     "regression_comparison",
     "run_retrieval_eval",
+    "fetch_ground_truth",
+    "score_run",
+    "build_quarter_report",
+    "BENCHMARKS",
+    "run_eval_loop",
 ]

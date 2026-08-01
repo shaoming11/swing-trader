@@ -4,8 +4,9 @@ All modules import from here — never instantiate clients inline.
 To swap providers, change this file only.
 
 Current backend:
-  - Embeddings + fast/mid LLM: Ollama (local)
-  - Judge LLM: Groq (cloud, free) — handles the 70B model without local disk cost
+  - Embeddings: Jina AI (cloud, free — 1M tokens/month)
+  - Fast/mid LLM: Groq (cloud, free)
+  - Judge LLM: Groq (cloud, free) — handles the 70B model
 """
 from __future__ import annotations
 
@@ -13,46 +14,43 @@ import os
 
 from openai import AsyncOpenAI
 
-# ── Ollama (local) ────────────────────────────────────────────────────────────
-_OLLAMA_BASE = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
-
-# ── Groq (cloud judge) ────────────────────────────────────────────────────────
+# ── Groq (all LLM inference) ──────────────────────────────────────────────────
 _GROQ_BASE = "https://api.groq.com/openai/v1"
 _GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 
+# ── Jina AI (embeddings + reranker) ──────────────────────────────────────────
+_JINA_BASE = "https://api.jina.ai/v1"
+JINA_API_KEY = os.getenv("JINA_API_KEY", "")
+_JINA_API_KEY = JINA_API_KEY  # backward compat for internal use
+
 # ── Model names ───────────────────────────────────────────────────────────────
 
-EMBED_MODEL = os.getenv("EMBED_MODEL", "nomic-embed-text")
+# 768-dim — same dimensionality as nomic-embed-text, no vector store rebuild needed
+EMBED_MODEL = os.getenv("EMBED_MODEL", "jina-embeddings-v2-base-en")
 
-# Fast/cheap: sentiment tagging, classification — local Ollama
-LLM_FAST_MODEL = os.getenv("LLM_FAST_MODEL", "llama3.2:3b")
+# Fast/cheap: sentiment tagging, classification — Groq free tier
+LLM_FAST_MODEL = os.getenv("LLM_FAST_MODEL", "llama-3.2-3b-preview")
 
-# Mid-tier: persona reasoning calls — local Ollama
-LLM_MID_MODEL = os.getenv("LLM_MID_MODEL", "llama3.1:8b")
+# Mid-tier: persona reasoning calls — Groq free tier
+LLM_MID_MODEL = os.getenv("LLM_MID_MODEL", "llama-3.1-8b-instant")
 
-# Judge synthesis: runs on Groq cloud (free, no local disk needed)
+# Judge synthesis: Groq free tier
 LLM_JUDGE_MODEL = os.getenv("LLM_JUDGE_MODEL", "llama-3.3-70b-versatile")
 
 
 def get_llm_client() -> AsyncOpenAI:
-    """OpenAI-compatible client for fast/mid models — points at local Ollama."""
-    return AsyncOpenAI(base_url=_OLLAMA_BASE, api_key="ollama")
+    """OpenAI-compatible client for fast/mid models — points at Groq cloud."""
+    return AsyncOpenAI(base_url=_GROQ_BASE, api_key=_GROQ_API_KEY)
 
 
 def get_judge_client() -> AsyncOpenAI:
-    """OpenAI-compatible client for judge synthesis — points at Groq cloud.
-
-    Falls back to local Ollama if GROQ_API_KEY is not set (useful for testing
-    with a smaller local model by also overriding LLM_JUDGE_MODEL in .env).
-    """
-    if _GROQ_API_KEY:
-        return AsyncOpenAI(base_url=_GROQ_BASE, api_key=_GROQ_API_KEY)
-    return AsyncOpenAI(base_url=_OLLAMA_BASE, api_key="ollama")
+    """OpenAI-compatible client for judge synthesis — points at Groq cloud."""
+    return AsyncOpenAI(base_url=_GROQ_BASE, api_key=_GROQ_API_KEY)
 
 
 def get_embed_client() -> AsyncOpenAI:
-    """OpenAI-compatible client for embeddings — points at local Ollama."""
-    return AsyncOpenAI(base_url=_OLLAMA_BASE, api_key="ollama")
+    """OpenAI-compatible client for embeddings — points at Jina AI cloud."""
+    return AsyncOpenAI(base_url=_JINA_BASE, api_key=_JINA_API_KEY)
 
 
 # ── To swap back to Anthropic + OpenAI: ──────────────────────────────────────

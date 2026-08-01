@@ -2,9 +2,15 @@
 
 Pulls EPS, revenue, margins, valuation, corporate actions, and price data
 for a given ticker and date window. No LLM involved anywhere in this module.
+
+yfinance uses the `requests` library (synchronous, blocking I/O). To avoid
+freezing the asyncio event loop — which would corrupt concurrent httpx
+connections (e.g. FRED) — the actual network calls run inside a thread via
+asyncio.to_thread. Cache hits bypass the thread entirely.
 """
 from __future__ import annotations
 
+import asyncio
 from datetime import date, timedelta
 
 import yfinance as yf
@@ -23,13 +29,18 @@ async def pull_fundamentals(
     window_start: date,
     window_end: date,
 ) -> FundamentalsResult:
-    """Pull all fundamentals fields for the ticker within the date window."""
+    """Pull all fundamentals fields for the ticker within the date window.
+
+    Cache hit → instant return.
+    Cache miss → runs _fetch_from_yfinance in a thread pool so the event loop
+    stays free for concurrent async work (e.g. FRED via httpx).
+    """
     quarter = _date_to_quarter(window_start)
     cached = disk_cache.get_fundamentals(ticker, quarter)
     if cached:
         return FundamentalsResult.model_validate(cached)
 
-    result = _fetch_from_yfinance(ticker, window_start, window_end)
+    result = await asyncio.to_thread(_fetch_from_yfinance, ticker, window_start, window_end)
     disk_cache.set_fundamentals(ticker, quarter, result.model_dump(mode="json"))
     return result
 

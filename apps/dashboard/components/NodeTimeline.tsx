@@ -54,9 +54,12 @@ export function NodeTimeline({ events }: Props) {
         output: e.output,
       };
     } else if (e.event === "error") {
-      // mark the last running node as errored
+      // Mark whichever node was mid-flight, or the first pending one if the
+      // error fired before any node_start (e.g. an ImportError).
       const running = Object.entries(nodeMap).find(([, v]) => v.status === "running");
-      if (running) nodeMap[running[0]] = { ...running[1], status: "error" };
+      const firstPending = Object.entries(nodeMap).find(([, v]) => v.status === "pending");
+      const target = running ?? firstPending;
+      if (target) nodeMap[target[0]] = { ...target[1], status: "error" };
     }
   }
 

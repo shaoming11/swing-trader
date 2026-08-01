@@ -4,15 +4,70 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { triggerRun } from "@/lib/api";
 
-const today = new Date().toISOString().slice(0, 10);
-const thirtyDaysAgo = new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10);
+// Window constraints — must match src/swing_trader/window.py
+const MIN_WINDOW_DAYS = 90;
+const MIN_RECENCY_DAYS = 45;
+const MAX_WINDOW_DAYS = 365;
+
+function lastSafeQuarter(): { start: string; end: string } {
+  const now = new Date();
+  const currentQ = Math.floor(now.getMonth() / 3); // 0-indexed quarter
+
+  // Walk back quarters until the end date passes the recency check
+  for (let i = 1; i <= 4; i++) {
+    let q = currentQ - i;
+    let year = now.getFullYear();
+    while (q < 0) { q += 4; year--; }
+    const startMonth = q * 3; // 0-indexed
+    const endMonth = startMonth + 2;
+    const start = new Date(year, startMonth, 1);
+    const end = new Date(year, endMonth + 1, 1); // first day after quarter
+    const daysAgo = Math.round((Date.now() - end.getTime()) / 864e5);
+    if (daysAgo >= MIN_RECENCY_DAYS) {
+      return {
+        start: start.toISOString().slice(0, 10),
+        end: end.toISOString().slice(0, 10),
+      };
+    }
+  }
+
+  // Fallback: two quarters ago (always safe)
+  const fallbackQ = currentQ - 2 < 0 ? currentQ - 2 + 4 : currentQ - 2;
+  const fallbackYear = currentQ - 2 < 0 ? now.getFullYear() - 1 : now.getFullYear();
+  const s = new Date(fallbackYear, fallbackQ * 3, 1);
+  const e = new Date(fallbackYear, fallbackQ * 3 + 3, 1);
+  return { start: s.toISOString().slice(0, 10), end: e.toISOString().slice(0, 10) };
+}
+
+function validateWindow(startStr: string, endStr: string): string | null {
+  const start = new Date(startStr);
+  const end = new Date(endStr);
+  if (isNaN(start.getTime()) || isNaN(end.getTime())) return "Invalid dates.";
+  if (start >= end) return "Start must be before end.";
+
+  const span = Math.round((end.getTime() - start.getTime()) / 864e5);
+  if (span < MIN_WINDOW_DAYS)
+    return `Window is ${span} days — minimum is ${MIN_WINDOW_DAYS}. A full quarter is needed to guarantee GDP and FOMC observations.`;
+  if (span > MAX_WINDOW_DAYS)
+    return `Window is ${span} days — maximum is ${MAX_WINDOW_DAYS}.`;
+
+  const daysAgo = Math.round((Date.now() - end.getTime()) / 864e5);
+  if (daysAgo < MIN_RECENCY_DAYS) {
+    const safeEnd = new Date(Date.now() - MIN_RECENCY_DAYS * 864e5).toISOString().slice(0, 10);
+    return `End date is too recent — FRED monthly data has a 2-6 week release lag. Use end date ≤ ${safeEnd}, or leave blank for the last completed quarter.`;
+  }
+
+  return null;
+}
+
+const defaults = lastSafeQuarter();
 
 export default function HomePage() {
   const router = useRouter();
   const [form, setForm] = useState({
     ticker: "AAPL",
-    window_start: thirtyDaysAgo,
-    window_end: today,
+    window_start: defaults.start,
+    window_end: defaults.end,
     run_type: "live" as "live" | "backfill" | "eval",
     thesis_hint: "",
   });
@@ -22,6 +77,13 @@ export default function HomePage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+
+    const windowErr = validateWindow(form.window_start, form.window_end);
+    if (windowErr) {
+      setError(windowErr);
+      return;
+    }
+
     setLoading(true);
     try {
       const { run_id } = await triggerRun({

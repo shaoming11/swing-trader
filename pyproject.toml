@@ -37,6 +37,8 @@ dependencies = [
     "python-dotenv>=1.0.0",
     # Market data (free, no API key)
     "yfinance>=0.2.40",
+    # Config
+    "pyyaml>=6.0",
 ]
 
 [project.optional-dependencies]

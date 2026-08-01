@@ -107,3 +107,87 @@ export async function getRegression(params?: { ticker?: string }): Promise<unkno
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
+
+// ── Corpus ──────────────────────────────────────────────────────────────────
+
+export interface CorpusStatus {
+  total_files: number;
+  by_source_type: Record<string, number>;
+  rejected_files: number;
+  tickers_in_manifest: string[];
+  manifest_entries: number;
+  vector_store_chunks: number;
+}
+
+export interface BackfillRequest {
+  tickers: string[];
+  start_date: string;
+  end_date: string;
+  run_tagger?: boolean;
+  run_indexer?: boolean;
+}
+
+export interface CorpusEvent {
+  event: "start" | "backfill_done" | "indexing_start" | "indexing_done" | "error" | "done";
+  tickers?: string[];
+  written?: number;
+  skipped?: number;
+  indexed?: number;
+  message?: string;
+  ts?: number;
+}
+
+export async function getCorpusStatus(): Promise<CorpusStatus> {
+  const res = await fetch(`${BASE}/corpus/status`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export function streamBackfill(
+  req: BackfillRequest,
+  onEvent: (e: CorpusEvent) => void,
+): AbortController {
+  const controller = new AbortController();
+
+  fetch(`${BASE}/corpus/backfill`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+    signal: controller.signal,
+  }).then(async (res) => {
+    if (!res.ok || !res.body) {
+      onEvent({ event: "error", message: await res.text() });
+      return;
+    }
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+      for (const line of lines) {
+        if (line.startsWith("data: ")) {
+          try {
+            onEvent(JSON.parse(line.slice(6)) as CorpusEvent);
+          } catch { /* ignore parse errors */ }
+        }
+      }
+    }
+  }).catch((err) => {
+    if (err.name !== "AbortError") {
+      onEvent({ event: "error", message: String(err) });
+    }
+  });
+
+  return controller;
+}
+
+export async function triggerIndex(): Promise<{ indexed: number }> {
+  const res = await fetch(`${BASE}/corpus/index`, { method: "POST" });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}

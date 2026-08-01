@@ -16,6 +16,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <Link href="/" className="text-sm text-gray-400 hover:text-white">Run</Link>
           <Link href="/runs" className="text-sm text-gray-400 hover:text-white">History</Link>
           <Link href="/eval" className="text-sm text-gray-400 hover:text-white">Eval</Link>
+          <Link href="/corpus" className="text-sm text-gray-400 hover:text-white">Corpus</Link>
           <a
             href="http://localhost:3000"
             target="_blank"

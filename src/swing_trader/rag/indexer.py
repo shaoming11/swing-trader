@@ -83,6 +83,8 @@ async def _index_file(filepath: Path, store) -> None:
 
     records = []
     for i, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
+        tickers = _normalize_tickers(meta.get("tickers", []))
+        relevance_tags = meta.get("relevance_tags", [])
         records.append({
             "id": _chunk_id(str(filepath), i),
             "embedding": embedding,
@@ -91,12 +93,12 @@ async def _index_file(filepath: Path, store) -> None:
                 "file_path": str(filepath),
                 "chunk_index": i,
                 "date": str(meta.get("date", "")),
-                "tickers": _normalize_tickers(meta.get("tickers", [])),
+                "tickers": tickers if tickers else ["MACRO"],
                 "source_type": meta.get("source_type", "news"),
                 "source": meta.get("source", ""),
-                "relevance_tags": meta.get("relevance_tags", []),
-                "sentiment_label": meta.get("sentiment_label", ""),
-                "sentiment_reason": meta.get("sentiment_reason", ""),
+                "relevance_tags": relevance_tags if relevance_tags else ["untagged"],
+                "sentiment_label": meta.get("sentiment_label", "") or "neutral",
+                "sentiment_reason": meta.get("sentiment_reason", "") or "",
                 "url": meta.get("url", ""),
                 "active": True,
             },

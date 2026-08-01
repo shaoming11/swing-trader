@@ -11,6 +11,7 @@ from typing import Annotated, TypedDict
 
 from langgraph.graph.message import add_messages
 
+from swing_trader.window import default_window, validate_window
 from swing_trader.schemas.pipeline import (
     GuardrailCheck,
     Layer1Output,
@@ -64,12 +65,15 @@ class PipelineState(TypedDict, total=False):
 
 def initial_state(
     ticker: str,
-    window_start: date,
-    window_end: date,
+    window_start: date | None = None,
+    window_end: date | None = None,
     user_id: str | None = None,
     run_type: str = "live",
     thesis_hint: str | None = None,
 ) -> PipelineState:
+    if window_start is None or window_end is None:
+        window_start, window_end = default_window()
+    validate_window(window_start, window_end)
     return PipelineState(
         run_id=str(uuid.uuid4()),
         ticker=ticker.upper(),

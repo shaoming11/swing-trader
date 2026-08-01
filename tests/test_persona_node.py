@@ -1,4 +1,4 @@
-"""Standalone test for the persona reasoning node with mock data.
+"""Standalone test for persona reasoning + judge synthesis with mock data.
 
 Usage:
     python tests/test_persona_node.py
@@ -22,6 +22,7 @@ load_dotenv()
 from swing_trader.schemas.pipeline import NumericBlock, QualitativeBlock, QualItem
 from swing_trader.state import initial_state
 from swing_trader.reasoning.node import persona_reasoning_node
+from swing_trader.reasoning.judge import judge_synthesis_node
 
 
 # ── Mock data ────────────────────────────────────────────────────────────────
@@ -131,10 +132,10 @@ async def main() -> None:
     state["numeric_block"] = numeric_block
     state["qualitative_block"] = qualitative_block
 
+    # ── Persona reasoning ────────────────────────────────────────────────────
     print("Running persona reasoning node with mock AAPL data...\n")
     state = await persona_reasoning_node(state)
 
-    # Display results
     persona_outputs = state["persona_outputs"]
     for persona in ("bull", "bear", "macro", "technicals"):
         text = getattr(persona_outputs, persona, "")
@@ -142,13 +143,33 @@ async def main() -> None:
         print(text if text else "(empty)")
         print()
 
-    # Sanity checks
     filled = sum(1 for p in ("bull", "bear", "macro", "technicals")
                  if getattr(persona_outputs, p))
     print(f"Personas filled: {filled}/4")
     assert filled == 4, f"Expected 4 personas filled, got {filled}"
     assert state["composed_prompt"], "composed_prompt should be non-empty"
-    print("All checks passed.")
+
+    # ── Judge synthesis ──────────────────────────────────────────────────────
+    print("\nRunning judge synthesis node...\n")
+    state = await judge_synthesis_node(state)
+
+    layer1 = state.get("layer1_output")
+    if layer1:
+        print("── JUDGE OUTPUT ─────────────────────────────────────────")
+        print(f"  Direction:      {layer1.direction}")
+        print(f"  Magnitude:      {layer1.magnitude_bucket}")
+        print(f"  Confidence:     {layer1.confidence:.2f}")
+        print(f"  Drivers:        {', '.join(layer1.dominant_drivers)}")
+        print(f"  Hold window:    {layer1.hold_window_bucket}")
+        print(f"  Thesis:         {layer1.thesis}")
+        print(f"  Sided with:     {', '.join(layer1.sided_with)}")
+        print(f"  Invalidation:   {layer1.invalidation_condition}")
+        print(f"  Agreement:      {persona_outputs.agreement_ratio(layer1.direction):.0%}")
+    else:
+        print("JUDGE FAILED — raw reasoning:")
+        print(state.get("judge_reasoning", "(empty)"))
+
+    print("\nAll checks passed.")
 
 
 if __name__ == "__main__":
