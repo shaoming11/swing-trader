@@ -27,8 +27,8 @@ _run_queues: dict[str, asyncio.Queue] = {}
 
 class RunRequest(BaseModel):
     ticker: str
-    window_start: date
-    window_end: date
+    window_start: date | None = None
+    window_end: date | None = None
     run_type: str = "live"
     thesis_hint: str | None = None
     user_id: str | None = None
@@ -52,11 +52,29 @@ async def _run_pipeline(run_id: str, req: RunRequest) -> None:
         if q:
             await q.put(event)
 
+    # Pre-flight: validate all pipeline imports before touching any node state.
+    # ImportError here means a missing Python dependency — surface it clearly.
     try:
         from swing_trader.state import initial_state
         from swing_trader.data_pull.node import data_pull_node
         from swing_trader.rag.node import rag_retrieval_node
+        from swing_trader.reasoning.node import persona_reasoning_node
+        from swing_trader.reasoning.judge import judge_synthesis_node
+    except ImportError as exc:
+        pkg = str(exc).replace("No module named ", "").strip("'\"")
+        await emit({
+            "event": "error",
+            "message": (
+                f"Missing Python dependency: {pkg}. "
+                "Run `pip install -e .` in the project root, then restart uvicorn."
+            ),
+            "ts": time.time(),
+        })
+        if q:
+            await q.put(None)
+        return
 
+    try:
         state = initial_state(
             ticker=req.ticker,
             window_start=req.window_start,
@@ -117,8 +135,74 @@ async def _run_pipeline(run_id: str, req: RunRequest) -> None:
             },
         })
 
-        # Future nodes (persona, judge, guardrails, layer2) will be added here
-        # as they are implemented in src/swing_trader/.
+        # ── persona reasoning (4 parallel LLM calls) ──────────────────────────
+        personas = ["persona_bull", "persona_bear", "persona_macro", "persona_technicals"]
+        for p in personas:
+            await emit({"event": "node_start", "node": p, "ts": time.time()})
+
+        t0 = time.perf_counter()
+        state = await persona_reasoning_node(state)
+        elapsed = round(time.perf_counter() - t0, 2)
+
+        po = state.get("persona_outputs")
+        for p, key in zip(personas, ["bull", "bear", "macro", "technicals"]):
+            text = getattr(po, key, "") if po else ""
+            await emit({
+                "event": "node_done",
+                "node": p,
+                "elapsed_s": elapsed,
+                "ts": time.time(),
+                "output": {"text": text},
+            })
+
+        # ── judge synthesis ─────────────────────────────────────────────────
+        await emit({"event": "node_start", "node": "judge", "ts": time.time()})
+        t0 = time.perf_counter()
+        state = await judge_synthesis_node(state)
+        elapsed = round(time.perf_counter() - t0, 2)
+
+        l1 = state.get("layer1_output")
+        await emit({
+            "event": "node_done",
+            "node": "judge",
+            "elapsed_s": elapsed,
+            "ts": time.time(),
+            "output": {
+                "direction": l1.direction if l1 else None,
+                "magnitude_bucket": l1.magnitude_bucket if l1 else None,
+                "confidence": l1.confidence if l1 else None,
+                "dominant_drivers": list(l1.dominant_drivers) if l1 else [],
+                "hold_window_bucket": l1.hold_window_bucket if l1 else None,
+                "thesis": l1.thesis if l1 else None,
+                "sided_with": list(l1.sided_with) if l1 else [],
+                "invalidation_condition": l1.invalidation_condition if l1 else None,
+            } if l1 else {"error": state.get("judge_reasoning", "parse failed")},
+        })
+
+        # ── guardrails (placeholder — pass-through for now) ─────────────────
+        await emit({"event": "node_start", "node": "guardrails", "ts": time.time()})
+        guardrail_checks = state.get("guardrail_checks", [])
+        await emit({
+            "event": "node_done",
+            "node": "guardrails",
+            "elapsed_s": 0.0,
+            "ts": time.time(),
+            "output": {
+                "checks": [{"name": c.name, "passed": c.passed, "reason": c.reason} for c in guardrail_checks] if guardrail_checks else [],
+                "retries": state.get("guardrail_retries", 0),
+            },
+        })
+
+        # ── layer2 (placeholder — pass-through for now) ─────────────────────
+        await emit({"event": "node_start", "node": "layer2", "ts": time.time()})
+        l2 = state.get("layer2_output")
+        await emit({
+            "event": "node_done",
+            "node": "layer2",
+            "elapsed_s": 0.0,
+            "ts": time.time(),
+            "output": l2.model_dump(mode="json") if l2 else {"gate_passed": None, "note": "not yet implemented"},
+        })
 
         warnings = state.get("warnings", [])
         await emit({
@@ -143,7 +227,9 @@ async def create_run(req: RunRequest, background_tasks: BackgroundTasks):
     Connect to GET /runs/{run_id}/stream for live node events.
     """
     from swing_trader.state import initial_state
-    state = initial_state(
+    from swing_trader.window import WindowError
+    try:
+        state = initial_state(
         ticker=req.ticker,
         window_start=req.window_start,
         window_end=req.window_end,
@@ -151,6 +237,8 @@ async def create_run(req: RunRequest, background_tasks: BackgroundTasks):
         user_id=req.user_id,
         thesis_hint=req.thesis_hint,
     )
+    except WindowError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
     run_id = state["run_id"]
 
     q: asyncio.Queue = asyncio.Queue()
@@ -161,8 +249,8 @@ async def create_run(req: RunRequest, background_tasks: BackgroundTasks):
     return RunResponse(
         run_id=run_id,
         ticker=req.ticker,
-        window_start=req.window_start,
-        window_end=req.window_end,
+        window_start=state["window_start"],
+        window_end=state["window_end"],
         run_type=req.run_type,
     )
 

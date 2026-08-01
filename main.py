@@ -3,6 +3,8 @@
 Usage:
     python main.py AAPL 2024-01-01 2024-03-31
     python main.py TSLA 2024-06-01 2024-09-30 --run-type backfill
+    python main.py --batch
+    python main.py --batch --watchlist path/to/watchlist.yaml
 """
 from __future__ import annotations
 
@@ -19,6 +21,8 @@ load_dotenv()
 from swing_trader.observability.metrics import start_metrics_server
 from swing_trader.data_pull.node import data_pull_node
 from swing_trader.rag.node import rag_retrieval_node
+from swing_trader.reasoning.node import persona_reasoning_node
+from swing_trader.reasoning.judge import judge_synthesis_node
 from swing_trader.state import initial_state
 
 logging.basicConfig(
@@ -57,6 +61,21 @@ async def run_pipeline(
         state["qualitative_block"].chunks_used if state["qualitative_block"] else 0,
     )
 
+    state = await persona_reasoning_node(state)
+    log.info(
+        "persona_reasoning done  personas_filled=%d  prompt_len=%d",
+        sum(1 for p in ("bull", "bear", "macro", "technicals")
+            if getattr(state["persona_outputs"], p, "")),
+        len(state.get("composed_prompt", "")),
+    )
+
+    state = await judge_synthesis_node(state)
+    log.info(
+        "judge_synthesis done  direction=%s  confidence=%s",
+        state["layer1_output"].direction if state["layer1_output"] else "FAILED",
+        state["layer1_output"].confidence if state["layer1_output"] else "N/A",
+    )
+
     if state.get("warnings"):
         for w in state["warnings"]:
             log.warning(w)
@@ -70,14 +89,18 @@ def _parse_date(s: str) -> date:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Swing-trader pipeline")
-    parser.add_argument("ticker", help="Stock ticker, e.g. AAPL")
-    parser.add_argument("window_start", type=_parse_date, help="Window start date YYYY-MM-DD")
-    parser.add_argument("window_end", type=_parse_date, help="Window end date YYYY-MM-DD")
+    parser.add_argument("ticker", nargs="?", default=None, help="Stock ticker, e.g. AAPL")
+    parser.add_argument("window_start", nargs="?", type=_parse_date, default=None,
+                        help="Window start date YYYY-MM-DD (default: last completed quarter)")
+    parser.add_argument("window_end", nargs="?", type=_parse_date, default=None,
+                        help="Window end date YYYY-MM-DD (default: last completed quarter)")
     parser.add_argument("--run-type", default="live", choices=["live", "backfill", "eval"])
     parser.add_argument("--user-id", default=None)
     parser.add_argument("--thesis-hint", default=None)
     parser.add_argument("--metrics-port", type=int, default=9090)
     parser.add_argument("--no-metrics", action="store_true", help="Skip starting the Prometheus server")
+    parser.add_argument("--batch", action="store_true", help="Run all tickers in watchlist sequentially")
+    parser.add_argument("--watchlist", default="watchlist.yaml", help="Path to watchlist YAML (default: watchlist.yaml)")
     args = parser.parse_args()
 
     if not args.no_metrics:
@@ -85,6 +108,25 @@ def main() -> None:
         os.environ.setdefault("METRICS_PORT", str(args.metrics_port))
         start_metrics_server()
         log.info("Prometheus metrics on :%s/metrics", args.metrics_port)
+
+    if args.batch:
+        from swing_trader.batch import run_batch
+
+        results = asyncio.run(run_batch(
+            watchlist_path=args.watchlist,
+            run_type_override=args.run_type if args.run_type != "live" else None,
+        ))
+        print(f"\n── Batch summary ({len(results)} tickers) ──")
+        for r in results:
+            status = r["status"]
+            if status == "ok":
+                print(f"  {r['ticker']:6s}  {r['direction']:5s}  confidence={r['confidence']:.2f}")
+            else:
+                print(f"  {r['ticker']:6s}  ERROR")
+        return
+
+    if not args.ticker:
+        parser.error("ticker is required (or use --batch)")
 
     state = asyncio.run(
         run_pipeline(
@@ -109,6 +151,30 @@ def main() -> None:
             print(f"  [{item.relevance_score:.2f}] {item.date}  {item.source}  {item.text[:120]}…")
     else:
         print("(none)")
+
+    print("\n── Persona outputs ────────────────────────────────────────")
+    if state.get("persona_outputs"):
+        for persona in ("bull", "bear", "macro", "technicals"):
+            text = getattr(state["persona_outputs"], persona, "")
+            print(f"\n  [{persona.upper()}]")
+            print(f"  {text}" if text else "  (empty)")
+    else:
+        print("(none)")
+
+    print("\n── Judge synthesis ────────────────────────────────────────")
+    if state.get("layer1_output"):
+        l1 = state["layer1_output"]
+        print(f"  Direction:    {l1.direction}")
+        print(f"  Magnitude:    {l1.magnitude_bucket}")
+        print(f"  Confidence:   {l1.confidence:.2f}")
+        print(f"  Drivers:      {', '.join(l1.dominant_drivers)}")
+        print(f"  Hold window:  {l1.hold_window_bucket}")
+        print(f"  Thesis:       {l1.thesis}")
+        print(f"  Sided with:   {', '.join(l1.sided_with)}")
+        print(f"  Invalidation: {l1.invalidation_condition}")
+    else:
+        print("  (judge synthesis failed -- see warnings)")
+        print(f"  Raw reasoning: {state.get('judge_reasoning', '')[:200]}")
 
 
 if __name__ == "__main__":

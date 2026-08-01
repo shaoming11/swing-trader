@@ -10,10 +10,14 @@ import json
 from datetime import date
 from typing import cast
 
-from swing_trader.clients import EMBED_MODEL, LLM_FAST_MODEL, get_embed_client, get_llm_client
+import httpx
+
+from swing_trader.clients import EMBED_MODEL, JINA_API_KEY, LLM_FAST_MODEL, get_embed_client, get_llm_client
 from swing_trader.rag.store import get_vector_store
 from swing_trader.schemas.pipeline import QualItem, QualitativeBlock, SentimentLabel
-_RERANKER_SCORE_THRESHOLD = 0.3
+_RERANKER_SCORE_THRESHOLD = 0.2  # Jina reranker returns normalized 0-1 scores
+_JINA_RERANK_URL = "https://api.jina.ai/v1/rerank"
+_JINA_RERANK_MODEL = "jina-reranker-v2-base-multilingual"
 _MAX_QUAL_BLOCK_TOKENS = 1500
 _SUMMARY_MAX_CHARS = 800  # ~200 tokens
 
@@ -23,7 +27,7 @@ async def retrieve(
     window_start: date,
     window_end: date,
     thesis_hint: str | None = None,
-    top_k_before_rerank: int = 50,
+    top_k_before_rerank: int = 200,
     top_k_after_rerank: int = 10,
 ) -> QualitativeBlock:
     """Run the full four-stage retrieval pipeline and return a QualitativeBlock."""
@@ -44,6 +48,13 @@ async def retrieve(
 
     query_embedding = await _embed(query_text)
     raw_results = store.search(query_embedding, hard_filter, top_k=top_k_before_rerank)
+
+    # Fallback: if date-filtered search returns nothing, retry without dates
+    # so the pipeline still gets qualitative context from the nearest available data.
+    if not raw_results:
+        fallback_filter = {k: v for k, v in hard_filter.items() if k not in ("date_gte", "date_lte")}
+        raw_results = store.search(query_embedding, fallback_filter, top_k=top_k_before_rerank)
+
     chunks_retrieved = len(raw_results)
 
     if not raw_results:
@@ -55,8 +66,8 @@ async def retrieve(
             chunks_used=0,
         )
 
-    # Stage 3 — cross-encoder rerank
-    reranked = _rerank(query_text, raw_results, top_n=top_k_after_rerank)
+    # Stage 3 — Jina reranker (cloud API)
+    reranked = await _rerank(query_text, raw_results, top_n=top_k_after_rerank)
 
     # Drop chunks below the relevance threshold
     reranked = [r for r in reranked if r["rerank_score"] >= _RERANKER_SCORE_THRESHOLD]
@@ -98,18 +109,35 @@ async def _embed(text: str) -> list[float]:
     return resp.data[0].embedding
 
 
-def _rerank(query: str, results: list[dict], top_n: int) -> list[dict]:
-    """Cross-encoder rerank using sentence-transformers."""
+async def _rerank(query: str, results: list[dict], top_n: int) -> list[dict]:
+    """Rerank using Jina Reranker API (cloud, returns 0-1 scores)."""
     try:
-        from sentence_transformers import CrossEncoder
-        model = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
-        pairs = [(query, r["content"]) for r in results]
-        scores = model.predict(pairs)
-        for r, score in zip(results, scores):
-            r["rerank_score"] = float(score)
-        return sorted(results, key=lambda x: x["rerank_score"], reverse=True)[:top_n]
-    except ImportError:
-        # Fall back to embedding similarity score if sentence-transformers not installed
+        documents = [r["content"] for r in results]
+        async with httpx.AsyncClient(timeout=httpx.Timeout(30.0)) as client:
+            resp = await client.post(
+                _JINA_RERANK_URL,
+                headers={
+                    "Authorization": f"Bearer {JINA_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": _JINA_RERANK_MODEL,
+                    "query": query,
+                    "documents": documents,
+                    "top_n": top_n,
+                },
+            )
+            resp.raise_for_status()
+            data = resp.json()
+
+        for item in data["results"]:
+            idx = item["index"]
+            results[idx]["rerank_score"] = float(item["relevance_score"])
+
+        scored = [r for r in results if "rerank_score" in r]
+        return sorted(scored, key=lambda x: x["rerank_score"], reverse=True)[:top_n]
+    except Exception:
+        # Fall back to embedding similarity score on API failure
         for r in results:
             r["rerank_score"] = r.get("score", 0.0)
         return sorted(results, key=lambda x: x["rerank_score"], reverse=True)[:top_n]
