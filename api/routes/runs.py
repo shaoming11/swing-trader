@@ -179,17 +179,24 @@ async def _run_pipeline(run_id: str, req: RunRequest) -> None:
             } if l1 else {"error": state.get("judge_reasoning", "parse failed")},
         })
 
-        # ── guardrails (placeholder — pass-through for now) ─────────────────
+        # ── guardrails (validates judge output, retries if needed) ────────
         await emit({"event": "node_start", "node": "guardrails", "ts": time.time()})
+        t0 = time.perf_counter()
+        from swing_trader.reasoning.guardrails import guardrail_node
+        state = await guardrail_node(state)
+        elapsed = round(time.perf_counter() - t0, 2)
+
         guardrail_checks = state.get("guardrail_checks", [])
         await emit({
             "event": "node_done",
             "node": "guardrails",
-            "elapsed_s": 0.0,
+            "elapsed_s": elapsed,
             "ts": time.time(),
             "output": {
                 "checks": [{"name": c.name, "passed": c.passed, "reason": c.reason} for c in guardrail_checks] if guardrail_checks else [],
                 "retries": state.get("guardrail_retries", 0),
+                "cancelled": state.get("pipeline_cancelled", False),
+                "cancellation_reason": state.get("cancellation_reason"),
             },
         })
 

@@ -1,20 +1,36 @@
 services:
+  # ── Application ──────────────────────────────────────────────────────────────
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://swingtrader:swingtrader@postgres:5432/swingtrader
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── Data stores ──────────────────────────────────────────────────────────────
   postgres:
     image: postgres:16
     ports:
       - "5432:5432"
     environment:
       POSTGRES_USER: swingtrader
-      POSTGRES_PASSWORD: swingtrader
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-swingtrader}
       POSTGRES_DB: swingtrader
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U swingtrader"]
       interval: 5s
       timeout: 5s
       retries: 5
 
+  # ── Monitoring ───────────────────────────────────────────────────────────────
   prometheus:
     image: prom/prometheus:latest
     ports:
@@ -29,7 +45,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/swing-trader.json
     volumes:
@@ -43,7 +59,7 @@ volumes:
   postgres_data:
   grafana_data:
 
-# ── Local dev commands (run outside Docker) ───────────────────────────────────
+# ── Local dev (run outside Docker) ────────────────────────────────────────────
 # FastAPI:   uvicorn api.main:app --reload --port 8000
 # Next.js:   cd apps/dashboard && npm run dev
 # Pipeline:  python main.py AAPL 2024-01-01 2024-03-31

@@ -12,6 +12,7 @@ import argparse
 import asyncio
 import json
 import logging
+import os
 from datetime import date
 
 from dotenv import load_dotenv
@@ -23,6 +24,7 @@ from swing_trader.data_pull.node import data_pull_node
 from swing_trader.rag.node import rag_retrieval_node
 from swing_trader.reasoning.node import persona_reasoning_node
 from swing_trader.reasoning.judge import judge_synthesis_node
+from swing_trader.reasoning.guardrails import guardrail_node
 from swing_trader.state import initial_state
 
 logging.basicConfig(
@@ -31,8 +33,17 @@ logging.basicConfig(
 )
 log = logging.getLogger("swing_trader")
 
+# LangSmith tracing for the top-level pipeline
+_traceable = None
+if os.getenv("LANGCHAIN_TRACING_V2", "").lower() == "true":
+    try:
+        from langsmith import traceable
+        _traceable = traceable
+    except ImportError:
+        pass
 
-async def run_pipeline(
+
+async def _run_pipeline_inner(
     ticker: str,
     window_start: date,
     window_end: date,
@@ -76,11 +87,55 @@ async def run_pipeline(
         state["layer1_output"].confidence if state["layer1_output"] else "N/A",
     )
 
+    state = await guardrail_node(state)
+    checks = state.get("guardrail_checks", [])
+    failed = [c for c in checks if not c.passed]
+    log.info(
+        "guardrails done  checks=%d  failed=%d  retries=%d  cancelled=%s",
+        len(checks), len(failed), state.get("guardrail_retries", 0),
+        state.get("pipeline_cancelled", False),
+    )
+
     if state.get("warnings"):
         for w in state["warnings"]:
             log.warning(w)
 
     return state
+
+
+async def run_pipeline(
+    ticker: str,
+    window_start: date,
+    window_end: date,
+    run_type: str = "live",
+    user_id: str | None = None,
+    thesis_hint: str | None = None,
+) -> dict:
+    """Top-level entry point — delegates to _run_pipeline_inner with LangSmith
+    tracing applied when LANGCHAIN_TRACING_V2=true."""
+    fn = _run_pipeline_inner
+    if _traceable is not None:
+        fn = _traceable(
+            name="run_pipeline",
+            run_type="chain",
+            metadata={
+                "ticker": ticker,
+                "window_start": str(window_start),
+                "window_end": str(window_end),
+                "run_type": run_type,
+                "user_id": user_id or "system",
+                "pipeline_version": os.getenv("PIPELINE_VERSION", "0.0.0"),
+            },
+            tags=[ticker, run_type, os.getenv("ENVIRONMENT", "development")],
+        )(fn)
+    return await fn(
+        ticker=ticker,
+        window_start=window_start,
+        window_end=window_end,
+        run_type=run_type,
+        user_id=user_id,
+        thesis_hint=thesis_hint,
+    )
 
 
 def _parse_date(s: str) -> date:

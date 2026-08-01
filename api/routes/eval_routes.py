@@ -1,13 +1,21 @@
-"""Eval harness routes — serve calibration, attribution, and regression data.
+"""Eval harness routes — serve calibration, attribution, regression, and
+self-improvement loop streaming.
 
-GET /eval/calibration  — confidence calibration curve
-GET /eval/attribution  — per-driver miss rates
-GET /eval/regression   — version-over-version comparison
-GET /eval/retrieval    — RAG retrieval metrics (requires labeled eval set on disk)
+GET  /eval/calibration    — confidence calibration curve
+GET  /eval/attribution    — per-driver miss rates
+GET  /eval/regression     — version-over-version comparison
+POST /eval/self-improve   — trigger self-improvement loop (SSE stream)
 """
 from __future__ import annotations
 
+import asyncio
+import json
+import time
+from typing import AsyncIterator
+
 from fastapi import APIRouter, Query
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 
 router = APIRouter()
 
@@ -104,3 +112,89 @@ async def regression(ticker: str | None = Query(None)):
         "versions": regression_comparison(records),
         "timing_distribution": timing_distribution(records),
     }
+
+
+# ── Self-improvement loop (SSE) ──────────────────────────────────────────────
+
+class SelfImproveRequest(BaseModel):
+    tickers: list[str] | None = None
+    quarters: list[str] | None = None
+    max_iterations: int = 5
+
+
+# Only allow one loop at a time
+_loop_running = False
+
+
+@router.post("/self-improve")
+async def self_improve(req: SelfImproveRequest):
+    """Trigger the self-improvement loop and stream iteration events via SSE."""
+    global _loop_running
+    if _loop_running:
+        return StreamingResponse(
+            _single_event({"event": "error", "message": "A self-improvement loop is already running."}),
+            media_type="text/event-stream",
+        )
+
+    from swing_trader.eval.self_improve import (
+        default_eval_quarters,
+        run_eval_loop_streaming,
+    )
+
+    quarters = req.quarters or default_eval_quarters()
+    tickers: list[str]
+    if req.tickers:
+        tickers = [t.upper() for t in req.tickers]
+    else:
+        try:
+            from swing_trader.batch import load_watchlist
+            wl = load_watchlist("watchlist.yaml")
+            tickers = wl["tickers"]
+        except Exception:
+            tickers = ["AAPL", "MSFT", "NVDA", "TSLA", "AMZN"]
+
+    q: asyncio.Queue = asyncio.Queue()
+
+    async def emit(event: dict):
+        event["ts"] = time.time()
+        await q.put(event)
+
+    async def run_loop():
+        global _loop_running
+        _loop_running = True
+        try:
+            await run_eval_loop_streaming(
+                tickers=tickers,
+                quarters=quarters,
+                max_iterations=req.max_iterations,
+                emit=emit,
+            )
+        except Exception as exc:
+            await q.put({"event": "error", "message": str(exc), "ts": time.time()})
+        finally:
+            await q.put(None)
+            _loop_running = False
+
+    asyncio.create_task(run_loop())
+
+    async def event_generator() -> AsyncIterator[str]:
+        while True:
+            try:
+                event = await asyncio.wait_for(q.get(), timeout=600.0)
+            except asyncio.TimeoutError:
+                yield f"data: {json.dumps({'event': 'timeout'})}\n\n"
+                break
+            if event is None:
+                yield f"data: {json.dumps({'event': 'stream_closed'})}\n\n"
+                break
+            yield f"data: {json.dumps(event)}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+async def _single_event(event: dict) -> AsyncIterator[str]:
+    yield f"data: {json.dumps(event)}\n\n"

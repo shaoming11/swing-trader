@@ -9,3 +9,6 @@ the visual for human eval + observing eval process + observing entire pipeline
 
 next steps
 - make it cheaper
+
+the corpus should only be generated once, and added to it daily
+the macro data should only be pulled once not on every ticker

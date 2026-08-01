@@ -191,3 +191,103 @@ export async function triggerIndex(): Promise<{ indexed: number }> {
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
+
+// ── Self-improvement loop ─────────────────────────────────────────────────
+
+export interface SelfImproveRequest {
+  tickers?: string[];
+  quarters?: string[];
+  max_iterations?: number;
+}
+
+export interface SelfImproveEvent {
+  event:
+    | "loop_start"
+    | "quarter_start"
+    | "iteration_start"
+    | "iteration_done"
+    | "patch_applied"
+    | "quarter_done"
+    | "alert"
+    | "loop_done"
+    | "error"
+    | "stream_closed"
+    | "timeout";
+  quarter?: string;
+  iteration?: number;
+  max_iterations?: number;
+  elapsed_s?: number;
+  all_passed?: boolean;
+  scored_runs?: number;
+  total_runs?: number;
+  cancelled_runs?: number;
+  metrics?: Record<
+    string,
+    { value: number; benchmark: number; passed: boolean; gap: number }
+  >;
+  driver_miss_rates?: Record<string, number>;
+  worst_tickers?: Record<string, string[]>;
+  reasoning?: string;
+  patches_this_round?: number;
+  total_patches?: number;
+  quarter_results?: Record<
+    string,
+    { all_passed: boolean; scored_runs: number; failing: string[] }
+  >;
+  quarters?: string[];
+  tickers?: string[];
+  reason?: string;
+  failing?: string[];
+  metric?: string;
+  gap?: number;
+  message?: string;
+  ts?: number;
+  result?: { all_passed: boolean; scored_runs: number; failing: string[] };
+}
+
+export function streamSelfImprove(
+  req: SelfImproveRequest,
+  onEvent: (e: SelfImproveEvent) => void,
+): AbortController {
+  const controller = new AbortController();
+
+  fetch(`${BASE}/eval/self-improve`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+    signal: controller.signal,
+  })
+    .then(async (res) => {
+      if (!res.ok || !res.body) {
+        onEvent({ event: "error", message: await res.text() });
+        return;
+      }
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            try {
+              onEvent(JSON.parse(line.slice(6)) as SelfImproveEvent);
+            } catch {
+              /* ignore parse errors */
+            }
+          }
+        }
+      }
+    })
+    .catch((err) => {
+      if (err.name !== "AbortError") {
+        onEvent({ event: "error", message: String(err) });
+      }
+    });
+
+  return controller;
+}

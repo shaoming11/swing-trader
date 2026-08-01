@@ -36,7 +36,7 @@ An AI-powered swing trade analysis pipeline. Given a ticker and a date window, i
 - Deterministic data pull (no LLM): fundamentals from SEC EDGAR / FMP, macro from FRED, sector-aware indicator selection
 - RAG retrieval with two-stage filter (hard ticker + date filter → semantic rerank) over a markdown corpus of news, analyst, social, and macro files
 - Four parallel persona calls (bull, bear, macro, pure-technicals) + judge synthesis with forced tool-use output
-- Guardrail pass: citation grounding, confidence/persona-agreement consistency, concrete invalidation condition check; up to 2 retries with failure reason appended to judge prompt
+- Guardrail pass: confidence floor, invalidation quality, data gap threshold, persona agreement consistency, neutral-high-confidence check; up to 2 retries with failure reason appended to judge prompt
 
 **Layer 2 — Position Sizing**
 - Gate: confidence > 0.60 AND magnitude_bucket != "0-3%"
@@ -51,20 +51,23 @@ An AI-powered swing trade analysis pipeline. Given a ticker and a date window, i
 |---|---|
 | Data pull node — fundamentals (EDGAR/FMP) + macro (FRED), parallel async | Built |
 | RAG retrieval node — two-stage filter, cross-encoder rerank, sentiment tagger | Built |
+| Persona reasoning node — 4 parallel LLM calls (bull, bear, macro, technicals) | Built |
+| Judge synthesis node — 70B model synthesizes personas into Layer1Output | Built |
+| Guardrail node — 5 checks, retry loop, pipeline cancellation on exhaustion | Built |
 | Pydantic schemas — `Layer1Output`, `PositionCard`, `NumericBlock`, `QualitativeBlock`, `PersonaOutputs`, `GuardrailCheck` | Built |
-| FastAPI backend — run trigger, SSE streaming, run history, eval routes | Built |
+| FastAPI backend — run trigger, SSE streaming, run history, eval routes, API key auth, rate limiting | Built |
 | Next.js dashboard — pipeline run form, live node timeline, run list, eval page | Built |
 | Postgres eval store — schema + migrations | Built |
 | LangSmith observability — `@observe_node` decorator, run metadata tagging | Built |
 | Prometheus metrics — RAG empty block rate, guardrail failure rate, token cost, latency | Built |
 | Eval harness — calibration curves, feature attribution, regression comparison, retrieval eval | Built |
-| Corpus generator — news/analyst/social/macro pull, LLM tagging pass, backfill + live modes | Spec complete |
+| Corpus generator — news/analyst/social/macro pull, LLM tagging pass, backfill + live modes | Built |
+| CI/CD — GitHub Actions (lint, test, security audit, Docker build) | Built |
+| Docker — multi-stage Dockerfile, production docker-compose | Built |
+| Self-improvement loop — iterative eval + prompt tuning via SSE | Built |
 | Dataset pipeline — QoQ/YoY entry generation, ground truth labeling, lookahead prevention | Spec complete |
-| Persona + judge nodes | Not built |
-| Guardrail node | Not built |
 | Layer 2 sizing node | Not built |
 | Full LangGraph graph wiring | Not built |
-| Self-improvement loop | Not built |
 
 ---
 
@@ -73,10 +76,12 @@ An AI-powered swing trade analysis pipeline. Given a ticker and a date window, i
 ```
 swing-trader/
 ├── api/
-│   ├── main.py                     # FastAPI app — uvicorn entry point
+│   ├── main.py                     # FastAPI app — CORS, auth, rate limiting, health checks
+│   ├── middleware.py               # API key auth + sliding-window rate limiter
 │   └── routes/
 │       ├── runs.py                 # POST /runs, GET /runs/{id}/stream (SSE), GET /runs
-│       └── eval_routes.py          # GET /eval/* — calibration, attribution, regression
+│       ├── eval_routes.py          # GET /eval/* — calibration, attribution, regression
+│       └── corpus.py               # POST /corpus/backfill, POST /corpus/index, GET /corpus/status
 ├── apps/
 │   └── dashboard/                  # Next.js 14 observer dashboard
 │       ├── app/
@@ -89,6 +94,7 @@ swing-trader/
 │           └── NodeTimeline.tsx    # Real-time node status + output viewer
 ├── src/swing_trader/
 │   ├── state.py                    # LangGraph PipelineState TypedDict
+│   ├── clients.py                  # LLM/embed client factory (Groq + Jina AI)
 │   ├── schemas/
 │   │   └── pipeline.py             # All Pydantic data contracts
 │   ├── data_pull/
@@ -99,41 +105,42 @@ swing-trader/
 │   │   └── cache.py                # HTTP cache layer
 │   ├── rag/
 │   │   ├── node.py                 # LangGraph node: RAG retrieval
-│   │   └── retriever.py            # Two-stage filter + cross-encoder rerank + sentiment tagger
+│   │   ├── retriever.py            # Two-stage filter + cross-encoder rerank + sentiment tagger
+│   │   ├── indexer.py              # Corpus → vector store ingestion
+│   │   └── store.py                # Vector store abstraction (Chroma / Qdrant)
+│   ├── reasoning/
+│   │   ├── node.py                 # Persona reasoning (4 parallel LLM calls)
+│   │   ├── judge.py                # Judge synthesis (70B model)
+│   │   ├── guardrails.py           # 5 guardrail checks + retry loop
+│   │   └── prompts.py              # System/user prompt templates
+│   ├── corpus/
+│   │   ├── generator.py            # Backfill + live corpus generation
+│   │   ├── sources.py              # Polygon, GDELT, FMP, FRED, StockTwits pullers
+│   │   ├── writer.py               # Markdown writer with dedup + quality check
+│   │   └── tagger.py               # LLM batch tagging pass
 │   ├── db/
-│   │   ├── pool.py                 # Postgres connection pool
+│   │   ├── pool.py                 # Postgres connection pool (asyncpg)
 │   │   ├── store.py                # Eval store read/write
 │   │   └── ground_truth.py         # Ground truth population after hold windows close
 │   ├── eval/
-│   │   └── harness.py              # Calibration curves, feature attribution, regression
+│   │   ├── harness.py              # Calibration curves, feature attribution, regression
+│   │   ├── self_improve.py         # Iterative eval + prompt tuning loop
+│   │   ├── metrics.py              # Eval scoring functions
+│   │   └── benchmarks.py           # RAG retrieval benchmarks
 │   └── observability/
 │       ├── decorators.py           # @observe_node — LangSmith + Prometheus timing
 │       ├── langsmith_config.py     # Project + run metadata helpers
 │       └── metrics.py              # Prometheus counters and histograms
 ├── migrations/
-│   └── 001_eval_store.sql          # Eval store schema
-├── datasets/
-│   └── golden_set/
-│       ├── template.json           # Golden set entry schema
-│       └── entries/                # Curated historical entries
+│   └── 001_eval_store.sql          # Eval store schema (idempotent)
+├── .github/
+│   └── workflows/
+│       └── ci.yml                  # Lint + test + security audit + Docker build
+├── Dockerfile                      # Multi-stage build, non-root user
+├── docker-compose.yml              # API + Postgres + Prometheus + Grafana
+├── .env.example                    # All config vars documented
 ├── corpus/                         # RAG corpus — markdown files (gitignored)
-│   ├── news/
-│   ├── analyst/
-│   ├── social/
-│   ├── macro/
-│   └── _rejected/                  # Failed quality checks — never indexed
-└── docs/
-    ├── PRD.md                      # Full product requirements — start here
-    ├── DIRECTORY.md                # Doc map and reading order
-    ├── CORPUS_GENERATOR.md         # Build and maintain the RAG knowledge base
-    ├── DATA_PULL_PIPELINE.md       # Deterministic fundamentals + macro pull
-    ├── RAG_PIPELINE.md             # Vector indexing + retrieval + reranking
-    ├── REASONING_PIPELINE.md       # Prompt composition + personas + judge
-    ├── GUARDRAIL_PIPELINE.md       # Input/runtime/output guardrails + retry
-    ├── LAYER2_PIPELINE.md          # Position sizing (Kelly formula)
-    ├── DATASET_PIPELINE.md         # QoQ/YoY training dataset generation
-    ├── EVAL_PIPELINE.md            # Calibration, regression, self-improvement loop
-    └── OBSERVABILITY_PIPELINE.md   # Tracing, metrics, eval store
+└── docs/                           # Deep-dive design docs
 ```
 
 ---
@@ -144,7 +151,7 @@ swing-trader/
 
 ```bash
 # Install Python dependencies
-pip install -e .
+pip install -e ".[dev]"
 
 # Copy and fill in API keys
 cp .env.example .env
@@ -161,37 +168,58 @@ npm install
 npm run dev          # http://localhost:3000
 ```
 
-### 3. Trigger a run (CLI)
+### 3. Docker (full stack)
 
 ```bash
-# Live run
+# Start everything: API + Postgres + Prometheus + Grafana
+docker compose up --build
+
+# API at http://localhost:8000
+# Dashboard: run separately (cd apps/dashboard && npm run dev)
+# Grafana at http://localhost:3000 (admin / admin)
+```
+
+### 4. Trigger a run
+
+```bash
+# Via API (add -H "X-API-Key: yourkey" if API_KEYS is set)
 curl -X POST http://localhost:8000/runs \
   -H "Content-Type: application/json" \
-  -d '{"ticker":"AAPL","window_start":"2024-01-01","window_end":"2024-03-31","run_type":"live"}'
+  -d '{"ticker":"AAPL","window_start":"2024-01-01","window_end":"2024-03-31"}'
 
 # Then stream node events
 curl -N http://localhost:8000/runs/{run_id}/stream
+
+# Via CLI
+python main.py AAPL 2024-01-01 2024-03-31
+
+# Batch run (all tickers in watchlist.yaml)
+python main.py --batch
 ```
 
 ---
 
 ## Environment Variables
 
-| Variable | Description |
-|---|---|
-| `ANTHROPIC_API_KEY` | Claude API key — persona + judge calls |
-| `LANGSMITH_API_KEY` | LangSmith tracing |
-| `LANGSMITH_PROJECT` | LangSmith project name (default: `swing-trader`) |
-| `FMP_API_KEY` | Financial Modeling Prep — fundamentals, analyst ratings |
-| `FRED_API_KEY` | FRED — macro data (CPI, rates, GDP, yield curve) |
-| `POLYGON_API_KEY` | Polygon.io — price/volume, historical closes |
-| `NEWS_API_KEY` | NewsAPI — news corpus backfill |
-| `DATABASE_URL` | Postgres connection string for eval store |
-| `METRICS_PORT` | Prometheus metrics port (default: `9090`) |
+See [`.env.example`](.env.example) for all variables. Key ones:
+
+| Variable | Required | Description |
+|---|---|---|
+| `GROQ_API_KEY` | Yes | Groq API key for all LLM inference |
+| `JINA_API_KEY` | Yes | Jina AI key for embeddings |
+| `DATABASE_URL` | Recommended | Postgres connection string for eval store |
+| `FMP_API_KEY` | Recommended | Financial Modeling Prep — fundamentals, analyst ratings |
+| `FRED_API_KEY` | Recommended | FRED — macro data (CPI, rates, GDP, yield curve) |
+| `POLYGON_API_KEY` | Recommended | Polygon.io — news articles for corpus |
+| `API_KEYS` | Production | Comma-separated API keys for auth (empty = disabled) |
+| `CORS_ORIGINS` | Production | Comma-separated allowed origins (empty = localhost only) |
+| `RATE_LIMIT_PER_MINUTE` | Optional | Per-IP rate limit (default: 30) |
 
 ---
 
 ## API Reference
+
+All endpoints require `X-API-Key` header when `API_KEYS` env var is set.
 
 | Method | Path | Description |
 |---|---|---|
@@ -201,7 +229,12 @@ curl -N http://localhost:8000/runs/{run_id}/stream
 | `GET` | `/runs` | List past runs. Query params: `ticker`, `run_type`, `limit`. |
 | `GET` | `/eval/calibration` | Calibration curve by confidence bucket. |
 | `GET` | `/eval/attribution` | Feature attribution — which driver type drives misses. |
-| `GET` | `/health` | Health check. |
+| `GET` | `/eval/regression` | Version-over-version hit rate comparison. |
+| `POST` | `/eval/self-improve` | Trigger self-improvement loop (SSE stream). |
+| `POST` | `/corpus/backfill` | Trigger corpus backfill for tickers (SSE stream). |
+| `POST` | `/corpus/index` | Run RAG indexer on unindexed corpus files. |
+| `GET` | `/corpus/status` | Corpus file counts and vector store stats. |
+| `GET` | `/health` | Health check — verifies DB + vector store connectivity. |
 
 ### SSE Event Types
 
@@ -216,6 +249,55 @@ Node order: `data_pull` → `rag_retrieval` → `persona_bull` / `persona_bear` 
 
 ---
 
+## Guardrails
+
+The guardrail node runs 5 checks on the judge's Layer 1 output:
+
+| Check | Description |
+|---|---|
+| `confidence_floor` | Confidence must be >= 0.40 (configurable) |
+| `invalidation_quality` | Invalidation condition must reference a specific price, %, or event |
+| `data_gap_threshold` | Pipeline must not have > 4 data gaps |
+| `persona_agreement` | High confidence requires minimum persona agreement |
+| `neutral_high_confidence` | Neutral direction with > 0.80 confidence is contradictory |
+
+On failure, the judge is retried up to 2 times with failure reasons injected into the prompt. If all retries exhaust, the pipeline is cancelled.
+
+---
+
+## Security
+
+- **API key auth** — `X-API-Key` header validated against `API_KEYS` env var. Disabled when unset (dev mode).
+- **Rate limiting** — sliding-window per-IP, configurable via `RATE_LIMIT_PER_MINUTE` (default: 30/min). Returns 429 with `Retry-After` header.
+- **CORS** — restricted to `CORS_ORIGINS` env var. Defaults to `localhost:3000` only.
+- **Non-root Docker** — production container runs as `appuser`.
+- **Startup validation** — fails fast if required API keys are missing.
+- **No secrets in code** — all credentials via env vars, `.env` gitignored.
+
+---
+
+## Deployment
+
+### Railway / Render / Fly.io
+
+1. Push the repo
+2. Set env vars from `.env.example` in the platform dashboard
+3. The Dockerfile is auto-detected and built
+
+### Docker Compose (self-hosted)
+
+```bash
+# Set production passwords
+export POSTGRES_PASSWORD=<strong-password>
+export GRAFANA_PASSWORD=<strong-password>
+export API_KEYS=<your-api-key>
+export CORS_ORIGINS=https://yourdomain.com
+
+docker compose up -d
+```
+
+---
+
 ## RAG Corpus
 
 The corpus is a flat set of markdown files under `corpus/` with YAML frontmatter:
@@ -225,9 +307,9 @@ The corpus is a flat set of markdown files under `corpus/` with YAML frontmatter
 date: 2024-01-15
 tickers: [AAPL]
 source_type: news          # news | analyst | social | macro
-source: NewsAPI            # NewsAPI | GDELT | FMP | StockTwits | Reddit | FRED
+source: Polygon            # Polygon | GDELT | FMP | StockTwits | FRED
 relevance_tags: [earnings, guidance]
-sentiment_label: bullish   # added by LLM tagging pass (Claude Haiku)
+sentiment_label: bullish   # added by LLM tagging pass
 sentiment_reason: "beat on EPS and raised guidance"
 ---
 
@@ -239,14 +321,10 @@ Body text...
 File naming: `corpus/{source_type}/{YYYY-MM-DD}_{TICKER}_{slug}.md`
 
 **Retrieval pipeline (four stages):**
-1. Hard metadata filter — ticker + date range (eliminates most irrelevance before any model runs)
-2. Embedding search — top-50 candidates (`text-embedding-3-small`)
+1. Hard metadata filter — ticker + date range
+2. Embedding search — top-50 candidates (Jina `jina-embeddings-v2-base-en`)
 3. Cross-encoder rerank — top-10 by relevance score
 4. Sentiment tag pass — labels each chunk bullish/bearish/neutral
-
-Output capped at 1,500 tokens rendered as condensed bullets grouped by source type. If all top-10 chunks score below the reranker threshold, returns an empty block rather than injecting noise.
-
-**Retrieval targets:** Recall@10 > 0.80, Precision@10 > 0.60, MRR > 0.70
 
 ---
 
@@ -275,73 +353,31 @@ Output capped at 1,500 tokens rendered as condensed bullets grouped by source ty
   "hold_window_start": "2024-01-15",
   "hold_window_end": "2024-03-31",
   "position_size_pct": 0.05,
-  "kelly_full": 0.18,
-  "kelly_fractional": 0.045,
-  "volatility_used": 0.28,
   "thesis": "..."
 }
 ```
 
 ---
 
-## Eval Harness
-
-```python
-from swing_trader.eval.harness import (
-    load_golden_set,
-    calibration_curve,
-    feature_attribution,
-    regression_comparison,
-)
-
-records = load_golden_set("datasets/golden_set/entries/")
-curve = calibration_curve(records)
-print(curve.to_dict())               # hit rate per confidence bucket
-print(curve.corrective_actions())    # "model is OVERCONFIDENT in 90% bucket"
-print(feature_attribution(records))  # which driver type correlates with misses
-```
-
-Five-tier eval hierarchy:
-1. **Golden set** — minimum 50 curated entries, frozen inputs, manually labeled dominant driver
-2. **Regression suite** — runs on every prompt/model/parameter change; blocks deploy if hit rate drops > 5pp
-3. **Adversarial scenarios** — conflicting signals, misleading headlines, empty RAG block, stale data
-4. **LLM-as-judge** — scores 1–5 per dimension: evidence grounding, driver attribution, confidence calibration, invalidation quality, thesis clarity
-5. **Human spot-check** — 10–20 entries per session via eval dashboard
-
-Full regression run over 50 golden entries costs ~$5.
-
----
-
-## Observability
-
-- **LangSmith** — full trace per pipeline run: every node's inputs, outputs, token counts, latency. Trace URL captured and stored in eval store.
-- **Prometheus** — scraped at `:9090/metrics`: pipeline runs, node latency, token cost, RAG empty block rate, guardrail failure rate, confidence distribution, gate pass rate.
-- **Eval store** — Postgres table of every completed run (50+ columns including all persona outputs, guardrail checks, RAG chunks). Ground truth auto-populated after hold windows close. Feeds calibration curves and the self-improvement loop.
-
-Grafana alert thresholds: > $0.50/run, guardrail failure rate > 10%.
-
----
-
-## Dataset Pipeline
-
-Generates QoQ (quarter-over-quarter) and YoY (year-over-year) training entries from historical API data. Each entry is a frozen snapshot of all inputs for a given ticker/quarter plus the known ground truth outcome.
-
-- **Lookahead bias prevention** — strict date filter on every RAG chunk; fundamentals use the report immediately preceding the window
-- **Ground truth** — price-based labels automated via Polygon; dominant driver labeled via Claude Haiku batch pass or manual curation
-- **Data quality score** (0.0–1.0) — entries below 0.70 excluded from golden set and regression suite
-- **Dataset splits by time** — train (pre-2023), validation (2023), test (2024+); never random splits
-- **Storage** — one JSON file per entry under `datasets/v{version}/entries/`; JSONL split files for streaming
-
----
-
 ## Model Routing
 
-| Stage | Model |
-|---|---|
-| Persona calls (bull, bear, macro, technicals) | `claude-sonnet-4-6` |
-| Judge synthesis | `claude-opus-4-6` |
-| LLM tagging pass (corpus generator) | `claude-haiku-4-5-20251001` |
-| Dominant driver labeling (dataset pipeline) | `claude-haiku-4-5-20251001` |
+| Stage | Model | Provider |
+|---|---|---|
+| Sentiment tagging | `llama-3.2-3b-preview` | Groq (free) |
+| Persona calls (bull, bear, macro, technicals) | `llama-3.1-8b-instant` | Groq (free) |
+| Judge synthesis | `llama-3.3-70b-versatile` | Groq (free) |
+| Embeddings | `jina-embeddings-v2-base-en` | Jina AI (free) |
+
+---
+
+## CI/CD
+
+GitHub Actions runs on every push and PR to `main`:
+
+- **Lint** — `ruff check` + `ruff format --check`
+- **Test** — `pytest` with Postgres service container
+- **Security** — `pip-audit` dependency vulnerability scan
+- **Docker** — build verification (runs after lint + test pass)
 
 ---
 

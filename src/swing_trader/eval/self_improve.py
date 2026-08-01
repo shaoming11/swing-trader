@@ -415,6 +415,163 @@ async def run_eval_loop(
     return all_reports
 
 
+# ── Streaming variant (for dashboard SSE) ────────────────────────────────────
+
+async def run_eval_loop_streaming(
+    tickers: list[str],
+    quarters: list[str],
+    max_iterations: int = MAX_ITERATIONS,
+    emit: callable = None,
+):
+    """Same as run_eval_loop but pushes structured events to *emit* for SSE.
+
+    Events emitted:
+      loop_start, quarter_start, iteration_start, iteration_done,
+      patch_applied, quarter_done, alert, loop_done
+    """
+    async def _emit(event: dict):
+        if emit:
+            await emit(event)
+
+    await _emit({
+        "event": "loop_start",
+        "quarters": quarters,
+        "tickers": tickers,
+        "max_iterations": max_iterations,
+        "ts": time.monotonic(),
+    })
+
+    all_reports: dict[str, dict] = {}
+    total_patches = 0
+    first_quarter = True
+
+    for quarter in quarters:
+        window_start, window_end = quarter_to_dates(quarter)
+        await _emit({
+            "event": "quarter_start",
+            "quarter": quarter,
+            "window_start": str(window_start),
+            "window_end": str(window_end),
+            "ts": time.monotonic(),
+        })
+
+        best_report: QuarterReport | None = None
+
+        for iteration in range(1, max_iterations + 1):
+            await _emit({
+                "event": "iteration_start",
+                "quarter": quarter,
+                "iteration": iteration,
+                "max_iterations": max_iterations,
+                "ts": time.monotonic(),
+            })
+
+            t0 = time.monotonic()
+            _save_prompts_snapshot(quarter, iteration)
+            states = await _run_quarter(tickers, window_start, window_end)
+            report = _score_quarter(quarter, states, tickers, window_start, window_end)
+            _save_report(quarter, iteration, report)
+            elapsed = round(time.monotonic() - t0, 1)
+
+            best_report = report
+            metrics_dict = {
+                m.name: {
+                    "value": round(m.value, 4),
+                    "benchmark": m.benchmark,
+                    "passed": m.passed,
+                    "gap": round(m.gap, 4),
+                }
+                for m in report.metrics
+            }
+
+            await _emit({
+                "event": "iteration_done",
+                "quarter": quarter,
+                "iteration": iteration,
+                "elapsed_s": elapsed,
+                "all_passed": report.all_passed,
+                "scored_runs": report.scored_runs,
+                "total_runs": report.total_runs,
+                "cancelled_runs": report.cancelled_runs,
+                "metrics": metrics_dict,
+                "driver_miss_rates": {
+                    k: round(v, 4) for k, v in report.driver_miss_rates.items()
+                },
+                "worst_tickers": dict(
+                    list(sorted(
+                        report.ticker_failures.items(),
+                        key=lambda x: len(x[1]),
+                        reverse=True,
+                    ))[:5]
+                ),
+                "ts": time.monotonic(),
+            })
+
+            if report.all_passed:
+                break
+
+            if iteration == max_iterations:
+                await _emit({
+                    "event": "alert",
+                    "quarter": quarter,
+                    "reason": "max_iterations_exhausted",
+                    "failing": [m.name for m in report.failing_metrics],
+                    "ts": time.monotonic(),
+                })
+                break
+
+            if not first_quarter and iteration == 1:
+                worst = report.worst_metric
+                if worst and worst.gap > BIG_GAP_THRESHOLD:
+                    await _emit({
+                        "event": "alert",
+                        "quarter": quarter,
+                        "reason": "big_gap_new_quarter",
+                        "metric": worst.name,
+                        "gap": round(worst.gap, 4),
+                        "ts": time.monotonic(),
+                    })
+
+            # Generate and apply prompt patch
+            patch = await _generate_prompt_patch(
+                report, iteration, max_iterations, total_patches,
+            )
+            if patch:
+                applied = _apply_patch(patch)
+                total_patches += applied
+                await _emit({
+                    "event": "patch_applied",
+                    "quarter": quarter,
+                    "iteration": iteration,
+                    "reasoning": patch.get("reasoning", ""),
+                    "patches_this_round": applied,
+                    "total_patches": total_patches,
+                    "ts": time.monotonic(),
+                })
+
+        all_reports[quarter] = {
+            "all_passed": best_report.all_passed if best_report else False,
+            "scored_runs": best_report.scored_runs if best_report else 0,
+            "failing": [m.name for m in best_report.failing_metrics] if best_report else [],
+        }
+        await _emit({
+            "event": "quarter_done",
+            "quarter": quarter,
+            "result": all_reports[quarter],
+            "ts": time.monotonic(),
+        })
+        first_quarter = False
+
+    _save_prompts_snapshot("final", 0)
+
+    await _emit({
+        "event": "loop_done",
+        "total_patches": total_patches,
+        "quarter_results": all_reports,
+        "ts": time.monotonic(),
+    })
+
+
 def _alert_user(quarter: str, report: QuarterReport, reason: str) -> None:
     """Print a prominent alert for the user to manually review prompts."""
     print("\n" + "!" * 60)
