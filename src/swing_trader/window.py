@@ -9,9 +9,9 @@ FRED release lags by series:
 To guarantee all series have data, window_end must fall within a period
 where at least one monthly observation has been published.
 """
+
 from __future__ import annotations
 
-import calendar
 from datetime import date, timedelta
 
 # Minimum window width in days — must span a full quarter to guarantee
@@ -55,9 +55,7 @@ def default_window() -> tuple[date, date]:
 def validate_window(window_start: date, window_end: date) -> None:
     """Raise WindowError if the window won't produce usable FRED data."""
     if window_start >= window_end:
-        raise WindowError(
-            f"window_start ({window_start}) must be before window_end ({window_end})"
-        )
+        raise WindowError(f"window_start ({window_start}) must be before window_end ({window_end})")
 
     span = (window_end - window_start).days
     if span < MIN_WINDOW_DAYS:

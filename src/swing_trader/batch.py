@@ -1,4 +1,5 @@
 """Batch orchestrator — loop through a watchlist of tickers sequentially."""
+
 from __future__ import annotations
 
 import asyncio
@@ -40,7 +41,10 @@ async def run_batch(
 
     log.info(
         "batch start  tickers=%d  window=%s→%s  delay=%ds",
-        len(tickers), window_start, window_end, delay_seconds,
+        len(tickers),
+        window_start,
+        window_end,
+        delay_seconds,
     )
 
     results: list[dict] = []
@@ -62,9 +66,16 @@ async def run_batch(
             confidence = state["layer1_output"].confidence if state.get("layer1_output") else None
             log.info(
                 "[%d/%d] %s — done in %.1fs  direction=%s  confidence=%s",
-                i + 1, len(tickers), ticker, elapsed, direction, confidence,
+                i + 1,
+                len(tickers),
+                ticker,
+                elapsed,
+                direction,
+                confidence,
             )
-            results.append({"ticker": ticker, "status": "ok", "direction": direction, "confidence": confidence})
+            results.append(
+                {"ticker": ticker, "status": "ok", "direction": direction, "confidence": confidence}
+            )
             successes += 1
         except Exception:
             elapsed = time.monotonic() - t0

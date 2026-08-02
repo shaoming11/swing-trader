@@ -11,6 +11,7 @@ On failure the guardrail can retry the judge up to MAX_RETRIES times,
 injecting the failure reasons into the retry prompt. If all retries exhaust,
 the pipeline is cancelled.
 """
+
 from __future__ import annotations
 
 import logging
@@ -43,9 +44,13 @@ _CONCRETE_PATTERN = re.compile(
 
 def _check_confidence_floor(layer1: Layer1Output) -> GuardrailCheck:
     passed = layer1.confidence >= CONFIDENCE_FLOOR
-    reason = "" if passed else (
-        f"Confidence {layer1.confidence:.2f} is below floor {CONFIDENCE_FLOOR:.2f}. "
-        "Either raise confidence with stronger evidence or switch direction to neutral."
+    reason = (
+        ""
+        if passed
+        else (
+            f"Confidence {layer1.confidence:.2f} is below floor {CONFIDENCE_FLOOR:.2f}. "
+            "Either raise confidence with stronger evidence or switch direction to neutral."
+        )
     )
     return GuardrailCheck(name="confidence_floor", passed=passed, reason=reason)
 
@@ -54,9 +59,13 @@ def _check_invalidation_quality(layer1: Layer1Output) -> GuardrailCheck:
     text = layer1.invalidation_condition
     has_concrete = bool(_CONCRETE_PATTERN.search(text))
     passed = has_concrete and len(text) >= 20
-    reason = "" if passed else (
-        f"Invalidation condition is too vague: '{text}'. "
-        "Must reference a specific price level, percentage, technical level, or named event."
+    reason = (
+        ""
+        if passed
+        else (
+            f"Invalidation condition is too vague: '{text}'. "
+            "Must reference a specific price level, percentage, technical level, or named event."
+        )
     )
     return GuardrailCheck(name="invalidation_quality", passed=passed, reason=reason)
 
@@ -65,14 +74,20 @@ def _check_data_gaps(state: PipelineState) -> GuardrailCheck:
     numeric = state.get("numeric_block")
     gaps = list(numeric.data_gaps) if numeric else []
     passed = len(gaps) <= DATA_GAP_THRESHOLD
-    reason = "" if passed else (
-        f"Too many data gaps ({len(gaps)}): {', '.join(gaps[:3])}... "
-        "Lower confidence or flag uncertainty in the thesis."
+    reason = (
+        ""
+        if passed
+        else (
+            f"Too many data gaps ({len(gaps)}): {', '.join(gaps[:3])}... "
+            "Lower confidence or flag uncertainty in the thesis."
+        )
     )
     return GuardrailCheck(name="data_gap_threshold", passed=passed, reason=reason)
 
 
-def _check_persona_agreement(layer1: Layer1Output, persona_outputs: PersonaOutputs) -> GuardrailCheck:
+def _check_persona_agreement(
+    layer1: Layer1Output, persona_outputs: PersonaOutputs
+) -> GuardrailCheck:
     if layer1.direction == "neutral":
         return GuardrailCheck(name="persona_agreement", passed=True)
 
@@ -108,7 +123,11 @@ def run_guardrail_checks(state: PipelineState) -> list[GuardrailCheck]:
     """Run all guardrail checks and return results."""
     layer1 = state.get("layer1_output")
     if layer1 is None:
-        return [GuardrailCheck(name="output_exists", passed=False, reason="No Layer 1 output to validate")]
+        return [
+            GuardrailCheck(
+                name="output_exists", passed=False, reason="No Layer 1 output to validate"
+            )
+        ]
 
     persona_outputs = state.get("persona_outputs") or PersonaOutputs()
 

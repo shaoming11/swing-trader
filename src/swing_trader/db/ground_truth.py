@@ -7,6 +7,7 @@ direction, magnitude, hit/miss, and price target error.
 Usage:
     python -m swing_trader.db.ground_truth
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -79,9 +80,8 @@ async def _update_run(client: httpx.AsyncClient, run: dict) -> None:
     else:
         actual_direction = "neutral"
 
-    hit = (
-        actual_direction == run["direction"]
-        and _in_magnitude_bucket(actual_magnitude, run["magnitude_bucket"])
+    hit = actual_direction == run["direction"] and _in_magnitude_bucket(
+        actual_magnitude, run["magnitude_bucket"]
     )
 
     predicted_mid = _MAGNITUDE_BUCKET_MIDPOINTS.get(run["magnitude_bucket"] or "", None)
@@ -113,12 +113,11 @@ async def _update_run(client: httpx.AsyncClient, run: dict) -> None:
         )
 
 
-async def _fetch_close(
-    client: httpx.AsyncClient, ticker: str, target_date: date
-) -> float | None:
+async def _fetch_close(client: httpx.AsyncClient, ticker: str, target_date: date) -> float | None:
     """Fetch the closing price on or nearest to target_date from Polygon."""
     api_key = os.getenv("POLYGON_API_KEY", "")
     from datetime import timedelta
+
     # Search ±5 days to handle weekends/holidays
     start = target_date - timedelta(days=5)
     end = target_date + timedelta(days=1)
@@ -135,6 +134,7 @@ async def _fetch_close(
     target_ord = target_date.toordinal()
     for r in results:
         from datetime import datetime
+
         r_date = datetime.utcfromtimestamp(r["t"] / 1000).date()
         if r_date.toordinal() <= target_ord:
             return float(r["c"])
@@ -155,6 +155,7 @@ def _in_magnitude_bucket(magnitude: float, bucket: str | None) -> bool:
 
 
 if __name__ == "__main__":
+
     async def _main():
         n = await populate_ground_truth()
         print(f"Updated {n} records")

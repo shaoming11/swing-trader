@@ -7,12 +7,12 @@ Usage:
     from swing_trader.rag.indexer import index_new_files
     await index_new_files()
 """
+
 from __future__ import annotations
 
 import hashlib
 import os
 from pathlib import Path
-from typing import Any
 
 import frontmatter
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -21,12 +21,12 @@ from swing_trader.clients import EMBED_MODEL, get_embed_client
 from swing_trader.rag.store import get_vector_store
 
 _CORPUS_ROOT = Path(os.getenv("CORPUS_DIR", "corpus"))
-_CHUNK_SIZE = 400       # tokens ≈ characters * 0.75; using chars here
+_CHUNK_SIZE = 400  # tokens ≈ characters * 0.75; using chars here
 _CHUNK_OVERLAP = 50
 _MIN_CHUNK_CHARS = 100  # discard chunks shorter than this
 
 _splitter = RecursiveCharacterTextSplitter(
-    chunk_size=int(_CHUNK_SIZE * 4),    # rough char estimate: 1 token ≈ 4 chars
+    chunk_size=int(_CHUNK_SIZE * 4),  # rough char estimate: 1 token ≈ 4 chars
     chunk_overlap=int(_CHUNK_OVERLAP * 4),
     length_function=len,
     separators=["\n\n", "\n", ". ", " ", ""],
@@ -85,24 +85,26 @@ async def _index_file(filepath: Path, store) -> None:
     for i, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
         tickers = _normalize_tickers(meta.get("tickers", []))
         relevance_tags = meta.get("relevance_tags", [])
-        records.append({
-            "id": _chunk_id(str(filepath), i),
-            "embedding": embedding,
-            "content": chunk,
-            "metadata": {
-                "file_path": str(filepath),
-                "chunk_index": i,
-                "date": str(meta.get("date", "")),
-                "tickers": tickers if tickers else ["MACRO"],
-                "source_type": meta.get("source_type", "news"),
-                "source": meta.get("source", ""),
-                "relevance_tags": relevance_tags if relevance_tags else ["untagged"],
-                "sentiment_label": meta.get("sentiment_label", "") or "neutral",
-                "sentiment_reason": meta.get("sentiment_reason", "") or "",
-                "url": meta.get("url", ""),
-                "active": True,
-            },
-        })
+        records.append(
+            {
+                "id": _chunk_id(str(filepath), i),
+                "embedding": embedding,
+                "content": chunk,
+                "metadata": {
+                    "file_path": str(filepath),
+                    "chunk_index": i,
+                    "date": str(meta.get("date", "")),
+                    "tickers": tickers if tickers else ["MACRO"],
+                    "source_type": meta.get("source_type", "news"),
+                    "source": meta.get("source", ""),
+                    "relevance_tags": relevance_tags if relevance_tags else ["untagged"],
+                    "sentiment_label": meta.get("sentiment_label", "") or "neutral",
+                    "sentiment_reason": meta.get("sentiment_reason", "") or "",
+                    "url": meta.get("url", ""),
+                    "active": True,
+                },
+            }
+        )
 
     store.upsert(records)
 

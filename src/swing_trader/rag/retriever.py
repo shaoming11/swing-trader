@@ -4,6 +4,7 @@ Usage:
     block = await retrieve(ticker="AAPL", window_start=date(2024,1,1), window_end=date(2024,3,31))
     prompt_text = block.render()
 """
+
 from __future__ import annotations
 
 import json
@@ -12,9 +13,16 @@ from typing import cast
 
 import httpx
 
-from swing_trader.clients import EMBED_MODEL, JINA_API_KEY, LLM_FAST_MODEL, get_embed_client, get_llm_client
+from swing_trader.clients import (
+    EMBED_MODEL,
+    JINA_API_KEY,
+    LLM_FAST_MODEL,
+    get_embed_client,
+    get_llm_client,
+)
 from swing_trader.rag.store import get_vector_store
 from swing_trader.schemas.pipeline import QualItem, QualitativeBlock, SentimentLabel
+
 _RERANKER_SCORE_THRESHOLD = 0.2  # Jina reranker returns normalized 0-1 scores
 _JINA_RERANK_URL = "https://api.jina.ai/v1/rerank"
 _JINA_RERANK_MODEL = "jina-reranker-v2-base-multilingual"
@@ -52,7 +60,9 @@ async def retrieve(
     # Fallback: if date-filtered search returns nothing, retry without dates
     # so the pipeline still gets qualitative context from the nearest available data.
     if not raw_results:
-        fallback_filter = {k: v for k, v in hard_filter.items() if k not in ("date_gte", "date_lte")}
+        fallback_filter = {
+            k: v for k, v in hard_filter.items() if k not in ("date_gte", "date_lte")
+        }
         raw_results = store.search(query_embedding, fallback_filter, top_k=top_k_before_rerank)
 
     chunks_retrieved = len(raw_results)
@@ -166,7 +176,7 @@ async def _ensure_sentiment(ticker: str, results: list[dict]) -> list[dict]:
         f"Return a JSON array in the same order as the items.\n"
         f"Items:\n{json.dumps(texts)}\n\n"
         f"For each item return exactly: "
-        f'{{\"sentiment_label\": \"bullish|bearish|neutral\", \"sentiment_reason\": \"one sentence\"}}'
+        f'{{"sentiment_label": "bullish|bearish|neutral", "sentiment_reason": "one sentence"}}'
     )
 
     try:

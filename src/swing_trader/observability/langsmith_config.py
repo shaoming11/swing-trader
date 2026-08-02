@@ -4,6 +4,7 @@ LangSmith tracing is enabled automatically via environment variables when
 LANGCHAIN_TRACING_V2=true. This module handles run metadata tagging and
 trace URL retrieval for storage in the eval store.
 """
+
 from __future__ import annotations
 
 import os
@@ -48,6 +49,7 @@ def get_trace_url(run_id: str) -> str | None:
     """
     try:
         from langsmith import Client
+
         client = Client()
         run = client.read_run(run_id)
         return f"https://smith.langchain.com/public/{run.id}/r"
@@ -63,6 +65,7 @@ def add_node_metadata(metadata: dict[str, Any]) -> None:
     """
     try:
         from langsmith.run_helpers import get_current_run_tree
+
         run = get_current_run_tree()
         if run:
             run.add_metadata(metadata)

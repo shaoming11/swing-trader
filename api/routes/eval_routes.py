@@ -6,6 +6,7 @@ GET  /eval/attribution    — per-driver miss rates
 GET  /eval/regression     — version-over-version comparison
 POST /eval/self-improve   — trigger self-improvement loop (SSE stream)
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -65,6 +66,7 @@ async def calibration(
 ):
     """Confidence calibration curve — stated confidence vs. actual hit rate per bucket."""
     from swing_trader.eval.harness import calibration_curve
+
     records = await _load_eval_records(ticker, pipeline_version)
     curve = calibration_curve(records)
     return {
@@ -82,6 +84,7 @@ async def attribution(
     """Per-driver miss rates — which input type (fundamental/macro/sentiment/technical)
     is most associated with wrong calls."""
     from swing_trader.eval.harness import feature_attribution, price_target_error_by_ticker
+
     records = await _load_eval_records(ticker, pipeline_version)
     attrs = feature_attribution(records)
     price_errors = price_target_error_by_ticker(records)
@@ -106,6 +109,7 @@ async def regression(ticker: str | None = Query(None)):
     Flags regression when hit rate drops >5pp or cancellation rate rises >10pp.
     """
     from swing_trader.eval.harness import regression_comparison, timing_distribution
+
     records = await _load_eval_records(ticker)
     return {
         "total_records": len(records),
@@ -115,6 +119,7 @@ async def regression(ticker: str | None = Query(None)):
 
 
 # ── Self-improvement loop (SSE) ──────────────────────────────────────────────
+
 
 class SelfImproveRequest(BaseModel):
     tickers: list[str] | None = None
@@ -132,7 +137,9 @@ async def self_improve(req: SelfImproveRequest):
     global _loop_running
     if _loop_running:
         return StreamingResponse(
-            _single_event({"event": "error", "message": "A self-improvement loop is already running."}),
+            _single_event(
+                {"event": "error", "message": "A self-improvement loop is already running."}
+            ),
             media_type="text/event-stream",
         )
 
@@ -148,6 +155,7 @@ async def self_improve(req: SelfImproveRequest):
     else:
         try:
             from swing_trader.batch import load_watchlist
+
             wl = load_watchlist("watchlist.yaml")
             tickers = wl["tickers"]
         except Exception:

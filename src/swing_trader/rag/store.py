@@ -8,10 +8,11 @@ Exposes a minimal interface used by the indexer and retriever:
 
 Select via env var VECTOR_STORE=chroma|qdrant (default: chroma).
 """
+
 from __future__ import annotations
 
 import os
-from typing import Any, Protocol
+from typing import Protocol
 
 
 class VectorStore(Protocol):
@@ -30,11 +31,13 @@ def get_vector_store() -> VectorStore:
 
 # ── Chroma (development) ──────────────────────────────────────────────────────
 
+
 class _ChromaStore:
     _COLLECTION = "swing_trader_corpus"
 
     def __init__(self):
         import chromadb
+
         persist_dir = os.getenv("CHROMA_PERSIST_DIR", ".chroma")
         self._client = chromadb.PersistentClient(path=persist_dir)
         self._col = self._client.get_or_create_collection(
@@ -50,9 +53,7 @@ class _ChromaStore:
             metadatas=[r["metadata"] for r in records],
         )
 
-    def search(
-        self, embedding: list[float], filter: dict, top_k: int
-    ) -> list[dict]:
+    def search(self, embedding: list[float], filter: dict, top_k: int) -> list[dict]:
         where = _build_chroma_where(filter)
         results = self._col.query(
             query_embeddings=[embedding],
@@ -66,11 +67,13 @@ class _ChromaStore:
             results["metadatas"][0],
             results["distances"][0],
         ):
-            out.append({
-                "content": doc,
-                "metadata": meta,
-                "score": 1.0 - float(dist),  # cosine distance → similarity
-            })
+            out.append(
+                {
+                    "content": doc,
+                    "metadata": meta,
+                    "score": 1.0 - float(dist),  # cosine distance → similarity
+                }
+            )
         # Post-filter by date (ISO strings sort lexicographically — no numeric cast needed)
         date_gte = filter.get("date_gte")
         date_lte = filter.get("date_lte")
@@ -108,6 +111,7 @@ _EMBED_VECTOR_SIZES = {
 
 def _vector_size() -> int:
     import os
+
     model = os.getenv("EMBED_MODEL", "nomic-embed-text")
     return _EMBED_VECTOR_SIZES.get(model, 768)
 
@@ -126,26 +130,26 @@ class _QdrantStore:
         if not self._client.collection_exists(self._COLLECTION):
             self._client.create_collection(
                 collection_name=self._COLLECTION,
-                vectors_config=VectorParams(
-                    size=_vector_size(), distance=Distance.COSINE
-                ),
+                vectors_config=VectorParams(size=_vector_size(), distance=Distance.COSINE),
             )
 
     def upsert(self, records: list[dict]) -> None:
         from qdrant_client.models import PointStruct
+
         points = [
-            PointStruct(id=r["id"], vector=r["embedding"], payload={
-                "content": r["content"],
-                **r["metadata"],
-            })
+            PointStruct(
+                id=r["id"],
+                vector=r["embedding"],
+                payload={
+                    "content": r["content"],
+                    **r["metadata"],
+                },
+            )
             for r in records
         ]
         self._client.upsert(collection_name=self._COLLECTION, points=points)
 
-    def search(
-        self, embedding: list[float], filter: dict, top_k: int
-    ) -> list[dict]:
-        from qdrant_client.models import Filter
+    def search(self, embedding: list[float], filter: dict, top_k: int) -> list[dict]:
         qdrant_filter = _build_qdrant_filter(filter)
         results = self._client.search(
             collection_name=self._COLLECTION,
@@ -165,26 +169,29 @@ class _QdrantStore:
 
     def file_is_indexed(self, file_path: str) -> bool:
         from qdrant_client.models import FieldCondition, Filter, MatchValue
+
         results = self._client.scroll(
             collection_name=self._COLLECTION,
-            scroll_filter=Filter(must=[
-                FieldCondition(key="file_path", match=MatchValue(value=file_path))
-            ]),
+            scroll_filter=Filter(
+                must=[FieldCondition(key="file_path", match=MatchValue(value=file_path))]
+            ),
             limit=1,
         )
         return len(results[0]) > 0
 
     def delete_by_file_path(self, file_path: str) -> None:
         from qdrant_client.models import FieldCondition, Filter, MatchValue
+
         self._client.delete(
             collection_name=self._COLLECTION,
-            points_selector=Filter(must=[
-                FieldCondition(key="file_path", match=MatchValue(value=file_path))
-            ]),
+            points_selector=Filter(
+                must=[FieldCondition(key="file_path", match=MatchValue(value=file_path))]
+            ),
         )
 
 
 # ── Filter builders ───────────────────────────────────────────────────────────
+
 
 def _build_chroma_where(filter: dict) -> dict:
     """Convert our generic filter dict to Chroma's $and/$or where format.
@@ -213,21 +220,14 @@ def _build_qdrant_filter(filter: dict):
         MatchValue,
         Range,
     )
+
     must = []
     if "ticker" in filter:
-        must.append(
-            FieldCondition(key="tickers", match=MatchValue(value=filter["ticker"]))
-        )
+        must.append(FieldCondition(key="tickers", match=MatchValue(value=filter["ticker"])))
     if "date_gte" in filter:
-        must.append(
-            FieldCondition(key="date", range=Range(gte=filter["date_gte"]))
-        )
+        must.append(FieldCondition(key="date", range=Range(gte=filter["date_gte"])))
     if "date_lte" in filter:
-        must.append(
-            FieldCondition(key="date", range=Range(lte=filter["date_lte"]))
-        )
+        must.append(FieldCondition(key="date", range=Range(lte=filter["date_lte"])))
     if "active" in filter:
-        must.append(
-            FieldCondition(key="active", match=MatchValue(value=filter["active"]))
-        )
+        must.append(FieldCondition(key="active", match=MatchValue(value=filter["active"])))
     return Filter(must=must) if must else None

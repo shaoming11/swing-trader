@@ -3,6 +3,7 @@
 All counters and histograms are registered globally at import time.
 Start the metrics HTTP server with start_metrics_server() at app startup.
 """
+
 from __future__ import annotations
 
 import os
@@ -115,14 +116,14 @@ LAYER2_GATE_TOTAL = Counter(
 
 _MODEL_COST_PER_1K: dict[str, dict[str, float]] = {
     # Groq free tier
-    "llama-3.3-70b-versatile":    {"input": 0.0, "output": 0.0},
-    "llama-3.1-8b-instant":       {"input": 0.0, "output": 0.0},
-    "llama-3.2-3b-preview":       {"input": 0.0, "output": 0.0},
+    "llama-3.3-70b-versatile": {"input": 0.0, "output": 0.0},
+    "llama-3.1-8b-instant": {"input": 0.0, "output": 0.0},
+    "llama-3.2-3b-preview": {"input": 0.0, "output": 0.0},
     # Jina AI free tier
     "jina-embeddings-v2-base-en": {"input": 0.0, "output": 0.0},
     # Anthropic (restore when switching back)
-    "claude-opus-4-6":   {"input": 0.015,   "output": 0.075},
-    "claude-sonnet-4-6": {"input": 0.003,   "output": 0.015},
+    "claude-opus-4-6": {"input": 0.015, "output": 0.075},
+    "claude-sonnet-4-6": {"input": 0.003, "output": 0.015},
     "claude-haiku-4-5-20251001": {"input": 0.00025, "output": 0.00125},
     # OpenAI (restore when switching back)
     "text-embedding-3-small": {"input": 0.00002, "output": 0.0},
@@ -141,7 +142,9 @@ def record_llm_usage(node_name: str, model: str, response) -> None:
         input_tok = getattr(usage, "input_tokens", None) or getattr(usage, "prompt_tokens", 0)
         output_tok = getattr(usage, "output_tokens", None) or getattr(usage, "completion_tokens", 0)
         LLM_TOKENS_TOTAL.labels(node_name=node_name, model=model, token_type="input").inc(input_tok)
-        LLM_TOKENS_TOTAL.labels(node_name=node_name, model=model, token_type="output").inc(output_tok)
+        LLM_TOKENS_TOTAL.labels(node_name=node_name, model=model, token_type="output").inc(
+            output_tok
+        )
         cost = estimate_cost(model, input_tok, output_tok)
         LLM_COST_USD_TOTAL.labels(node_name=node_name, model=model).inc(cost)
     except Exception:

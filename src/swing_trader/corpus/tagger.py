@@ -3,6 +3,7 @@
 Run as a batch job after raw pulls (not inline during pull) to keep cost isolated.
 Batches up to 20 articles per LLM call.
 """
+
 from __future__ import annotations
 
 import json
@@ -15,10 +16,17 @@ from swing_trader.clients import LLM_JUDGE_MODEL, get_judge_client
 _BATCH_SIZE = 20
 _CORPUS_ROOT = Path("corpus")
 
-_VALID_TAGS = frozenset({
-    "earnings", "macro", "sentiment", "technical", "geopolitics",
-    "corporate_action", "analyst_rating",
-})
+_VALID_TAGS = frozenset(
+    {
+        "earnings",
+        "macro",
+        "sentiment",
+        "technical",
+        "geopolitics",
+        "corporate_action",
+        "analyst_rating",
+    }
+)
 
 
 async def tag_untagged_files(corpus_root: Path | None = None) -> int:
@@ -94,7 +102,9 @@ async def _tag_batch(filepaths: list[Path]) -> None:
         try:
             fp = Path(item["path"])
             post = frontmatter.load(fp)
-            post["relevance_tags"] = [t for t in (tags.get("relevance_tags") or []) if t in _VALID_TAGS]
+            post["relevance_tags"] = [
+                t for t in (tags.get("relevance_tags") or []) if t in _VALID_TAGS
+            ]
             post["sentiment_label"] = tags.get("sentiment_label", "neutral")
             post["sentiment_reason"] = tags.get("sentiment_reason", "")
             fp.write_text(frontmatter.dumps(post))

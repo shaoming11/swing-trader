@@ -5,6 +5,7 @@ GET   /runs/{run_id}/stream — SSE stream of node events for a live run
 GET   /runs/{run_id}        — fetch stored run from eval store
 GET   /runs                 — list past runs with optional filters
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -25,6 +26,7 @@ _run_queues: dict[str, asyncio.Queue] = {}
 
 # ── Request / response models ──────────────────────────────────────────────────
 
+
 class RunRequest(BaseModel):
     ticker: str
     window_start: date | None = None
@@ -44,6 +46,7 @@ class RunResponse(BaseModel):
 
 # ── Background pipeline task ───────────────────────────────────────────────────
 
+
 async def _run_pipeline(run_id: str, req: RunRequest) -> None:
     """Execute the pipeline and publish SSE events for each node."""
     q = _run_queues.get(run_id)
@@ -62,14 +65,16 @@ async def _run_pipeline(run_id: str, req: RunRequest) -> None:
         from swing_trader.reasoning.judge import judge_synthesis_node
     except ImportError as exc:
         pkg = str(exc).replace("No module named ", "").strip("'\"")
-        await emit({
-            "event": "error",
-            "message": (
-                f"Missing Python dependency: {pkg}. "
-                "Run `pip install -e .` in the project root, then restart uvicorn."
-            ),
-            "ts": time.time(),
-        })
+        await emit(
+            {
+                "event": "error",
+                "message": (
+                    f"Missing Python dependency: {pkg}. "
+                    "Run `pip install -e .` in the project root, then restart uvicorn."
+                ),
+                "ts": time.time(),
+            }
+        )
         if q:
             await q.put(None)
         return
@@ -91,19 +96,23 @@ async def _run_pipeline(run_id: str, req: RunRequest) -> None:
         elapsed = round(time.perf_counter() - t0, 2)
 
         numeric = state.get("numeric_block")
-        await emit({
-            "event": "node_done",
-            "node": "data_pull",
-            "elapsed_s": elapsed,
-            "ts": time.time(),
-            "output": {
-                "rendered_text": numeric.rendered_text if numeric else None,
-                "data_gaps": list(numeric.data_gaps) if numeric else [],
-                "sources_used": list(numeric.sources_used) if numeric else [],
-                "fundamentals_report_date": str(numeric.fundamentals_report_date) if numeric and numeric.fundamentals_report_date else None,
-                "macro_series_pulled": list(numeric.macro_series_pulled) if numeric else [],
-            },
-        })
+        await emit(
+            {
+                "event": "node_done",
+                "node": "data_pull",
+                "elapsed_s": elapsed,
+                "ts": time.time(),
+                "output": {
+                    "rendered_text": numeric.rendered_text if numeric else None,
+                    "data_gaps": list(numeric.data_gaps) if numeric else [],
+                    "sources_used": list(numeric.sources_used) if numeric else [],
+                    "fundamentals_report_date": str(numeric.fundamentals_report_date)
+                    if numeric and numeric.fundamentals_report_date
+                    else None,
+                    "macro_series_pulled": list(numeric.macro_series_pulled) if numeric else [],
+                },
+            }
+        )
 
         # ── rag_retrieval node ─────────────────────────────────────────────────
         await emit({"event": "node_start", "node": "rag_retrieval", "ts": time.time()})
@@ -112,28 +121,30 @@ async def _run_pipeline(run_id: str, req: RunRequest) -> None:
         elapsed = round(time.perf_counter() - t0, 2)
 
         rag = state.get("qualitative_block")
-        await emit({
-            "event": "node_done",
-            "node": "rag_retrieval",
-            "elapsed_s": elapsed,
-            "ts": time.time(),
-            "output": {
-                "chunks_retrieved": rag.chunks_retrieved if rag else 0,
-                "chunks_used": rag.chunks_used if rag else 0,
-                "items": [
-                    {
-                        "date": item.date,
-                        "source": item.source,
-                        "source_type": item.source_type,
-                        "sentiment_label": item.sentiment_label,
-                        "sentiment_reason": item.sentiment_reason,
-                        "summary": item.summary,
-                        "relevance_score": round(item.relevance_score, 4),
-                    }
-                    for item in (rag.items if rag else [])
-                ],
-            },
-        })
+        await emit(
+            {
+                "event": "node_done",
+                "node": "rag_retrieval",
+                "elapsed_s": elapsed,
+                "ts": time.time(),
+                "output": {
+                    "chunks_retrieved": rag.chunks_retrieved if rag else 0,
+                    "chunks_used": rag.chunks_used if rag else 0,
+                    "items": [
+                        {
+                            "date": item.date,
+                            "source": item.source,
+                            "source_type": item.source_type,
+                            "sentiment_label": item.sentiment_label,
+                            "sentiment_reason": item.sentiment_reason,
+                            "summary": item.summary,
+                            "relevance_score": round(item.relevance_score, 4),
+                        }
+                        for item in (rag.items if rag else [])
+                    ],
+                },
+            }
+        )
 
         # ── persona reasoning (4 parallel LLM calls) ──────────────────────────
         personas = ["persona_bull", "persona_bear", "persona_macro", "persona_technicals"]
@@ -147,13 +158,15 @@ async def _run_pipeline(run_id: str, req: RunRequest) -> None:
         po = state.get("persona_outputs")
         for p, key in zip(personas, ["bull", "bear", "macro", "technicals"]):
             text = getattr(po, key, "") if po else ""
-            await emit({
-                "event": "node_done",
-                "node": p,
-                "elapsed_s": elapsed,
-                "ts": time.time(),
-                "output": {"text": text},
-            })
+            await emit(
+                {
+                    "event": "node_done",
+                    "node": p,
+                    "elapsed_s": elapsed,
+                    "ts": time.time(),
+                    "output": {"text": text},
+                }
+            )
 
         # ── judge synthesis ─────────────────────────────────────────────────
         await emit({"event": "node_start", "node": "judge", "ts": time.time()})
@@ -162,62 +175,80 @@ async def _run_pipeline(run_id: str, req: RunRequest) -> None:
         elapsed = round(time.perf_counter() - t0, 2)
 
         l1 = state.get("layer1_output")
-        await emit({
-            "event": "node_done",
-            "node": "judge",
-            "elapsed_s": elapsed,
-            "ts": time.time(),
-            "output": {
-                "direction": l1.direction if l1 else None,
-                "magnitude_bucket": l1.magnitude_bucket if l1 else None,
-                "confidence": l1.confidence if l1 else None,
-                "dominant_drivers": list(l1.dominant_drivers) if l1 else [],
-                "hold_window_bucket": l1.hold_window_bucket if l1 else None,
-                "thesis": l1.thesis if l1 else None,
-                "sided_with": list(l1.sided_with) if l1 else [],
-                "invalidation_condition": l1.invalidation_condition if l1 else None,
-            } if l1 else {"error": state.get("judge_reasoning", "parse failed")},
-        })
+        await emit(
+            {
+                "event": "node_done",
+                "node": "judge",
+                "elapsed_s": elapsed,
+                "ts": time.time(),
+                "output": {
+                    "direction": l1.direction if l1 else None,
+                    "magnitude_bucket": l1.magnitude_bucket if l1 else None,
+                    "confidence": l1.confidence if l1 else None,
+                    "dominant_drivers": list(l1.dominant_drivers) if l1 else [],
+                    "hold_window_bucket": l1.hold_window_bucket if l1 else None,
+                    "thesis": l1.thesis if l1 else None,
+                    "sided_with": list(l1.sided_with) if l1 else [],
+                    "invalidation_condition": l1.invalidation_condition if l1 else None,
+                }
+                if l1
+                else {"error": state.get("judge_reasoning", "parse failed")},
+            }
+        )
 
         # ── guardrails (validates judge output, retries if needed) ────────
         await emit({"event": "node_start", "node": "guardrails", "ts": time.time()})
         t0 = time.perf_counter()
         from swing_trader.reasoning.guardrails import guardrail_node
+
         state = await guardrail_node(state)
         elapsed = round(time.perf_counter() - t0, 2)
 
         guardrail_checks = state.get("guardrail_checks", [])
-        await emit({
-            "event": "node_done",
-            "node": "guardrails",
-            "elapsed_s": elapsed,
-            "ts": time.time(),
-            "output": {
-                "checks": [{"name": c.name, "passed": c.passed, "reason": c.reason} for c in guardrail_checks] if guardrail_checks else [],
-                "retries": state.get("guardrail_retries", 0),
-                "cancelled": state.get("pipeline_cancelled", False),
-                "cancellation_reason": state.get("cancellation_reason"),
-            },
-        })
+        await emit(
+            {
+                "event": "node_done",
+                "node": "guardrails",
+                "elapsed_s": elapsed,
+                "ts": time.time(),
+                "output": {
+                    "checks": [
+                        {"name": c.name, "passed": c.passed, "reason": c.reason}
+                        for c in guardrail_checks
+                    ]
+                    if guardrail_checks
+                    else [],
+                    "retries": state.get("guardrail_retries", 0),
+                    "cancelled": state.get("pipeline_cancelled", False),
+                    "cancellation_reason": state.get("cancellation_reason"),
+                },
+            }
+        )
 
         # ── layer2 (placeholder — pass-through for now) ─────────────────────
         await emit({"event": "node_start", "node": "layer2", "ts": time.time()})
         l2 = state.get("layer2_output")
-        await emit({
-            "event": "node_done",
-            "node": "layer2",
-            "elapsed_s": 0.0,
-            "ts": time.time(),
-            "output": l2.model_dump(mode="json") if l2 else {"gate_passed": None, "note": "not yet implemented"},
-        })
+        await emit(
+            {
+                "event": "node_done",
+                "node": "layer2",
+                "elapsed_s": 0.0,
+                "ts": time.time(),
+                "output": l2.model_dump(mode="json")
+                if l2
+                else {"gate_passed": None, "note": "not yet implemented"},
+            }
+        )
 
         warnings = state.get("warnings", [])
-        await emit({
-            "event": "pipeline_done",
-            "run_id": run_id,
-            "warnings": warnings,
-            "ts": time.time(),
-        })
+        await emit(
+            {
+                "event": "pipeline_done",
+                "run_id": run_id,
+                "warnings": warnings,
+                "ts": time.time(),
+            }
+        )
 
     except Exception as exc:
         await emit({"event": "error", "message": str(exc), "ts": time.time()})
@@ -228,6 +259,7 @@ async def _run_pipeline(run_id: str, req: RunRequest) -> None:
 
 # ── Routes ─────────────────────────────────────────────────────────────────────
 
+
 @router.post("", response_model=RunResponse, status_code=202)
 async def create_run(req: RunRequest, background_tasks: BackgroundTasks):
     """Trigger a pipeline run. Returns immediately with the run_id.
@@ -235,15 +267,16 @@ async def create_run(req: RunRequest, background_tasks: BackgroundTasks):
     """
     from swing_trader.state import initial_state
     from swing_trader.window import WindowError
+
     try:
         state = initial_state(
-        ticker=req.ticker,
-        window_start=req.window_start,
-        window_end=req.window_end,
-        run_type=req.run_type,
-        user_id=req.user_id,
-        thesis_hint=req.thesis_hint,
-    )
+            ticker=req.ticker,
+            window_start=req.window_start,
+            window_end=req.window_end,
+            run_type=req.run_type,
+            user_id=req.user_id,
+            thesis_hint=req.thesis_hint,
+        )
     except WindowError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     run_id = state["run_id"]
@@ -268,6 +301,7 @@ async def stream_run(run_id: str):
 
     Events: node_start | node_done | pipeline_done | error
     """
+
     async def event_generator() -> AsyncIterator[str]:
         q = _run_queues.get(run_id)
         if q is None:
@@ -278,11 +312,11 @@ async def stream_run(run_id: str):
             while True:
                 event = await asyncio.wait_for(q.get(), timeout=120.0)
                 if event is None:
-                    yield "data: {\"event\": \"stream_closed\"}\n\n"
+                    yield 'data: {"event": "stream_closed"}\n\n'
                     break
                 yield f"data: {json.dumps(event)}\n\n"
         except asyncio.TimeoutError:
-            yield "data: {\"event\": \"timeout\"}\n\n"
+            yield 'data: {"event": "timeout"}\n\n'
         finally:
             _run_queues.pop(run_id, None)
 
@@ -300,6 +334,7 @@ async def stream_run(run_id: str):
 async def get_run(run_id: str):
     """Fetch a completed run from the eval store."""
     from swing_trader.db.store import get_run as _get_run
+
     row = await _get_run(run_id)
     if row is None:
         raise HTTPException(status_code=404, detail="run not found")
@@ -314,6 +349,7 @@ async def list_runs(
 ):
     """List past pipeline runs from the eval store, newest first."""
     from swing_trader.db.pool import get_pool
+
     pool = await get_pool()
 
     conditions = []

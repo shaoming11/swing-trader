@@ -1,4 +1,5 @@
 """Asyncpg connection pool — shared across the process lifetime."""
+
 from __future__ import annotations
 
 import os

@@ -3,6 +3,7 @@
 Synthesizes the four persona outputs into a single Layer1Output trade
 recommendation using the 70B judge model.
 """
+
 from __future__ import annotations
 
 import json
@@ -77,13 +78,15 @@ async def judge_synthesis_node(state: PipelineState) -> PipelineState:
         CONFIDENCE_DISTRIBUTION.observe(layer1.confidence)
         DIRECTION_TOTAL.labels(direction=layer1.direction).inc()
 
-        add_node_metadata({
-            "direction": layer1.direction,
-            "confidence": layer1.confidence,
-            "magnitude_bucket": layer1.magnitude_bucket,
-            "sided_with": layer1.sided_with,
-            "agreement_ratio": persona_outputs.agreement_ratio(layer1.direction),
-        })
+        add_node_metadata(
+            {
+                "direction": layer1.direction,
+                "confidence": layer1.confidence,
+                "magnitude_bucket": layer1.magnitude_bucket,
+                "sided_with": layer1.sided_with,
+                "agreement_ratio": persona_outputs.agreement_ratio(layer1.direction),
+            }
+        )
 
         log.info(
             "direction=%s  confidence=%.2f  magnitude=%s  drivers=%s",

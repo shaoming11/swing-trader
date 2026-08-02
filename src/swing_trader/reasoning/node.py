@@ -4,6 +4,7 @@ Runs four LLM calls in parallel (bull, bear, macro, technicals), each with a
 distinct system prompt that biases its analysis perspective.  All four share
 the same composed prompt built from the numeric + qualitative blocks.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -61,13 +62,16 @@ async def persona_reasoning_node(state: PipelineState) -> PipelineState:
         if not getattr(persona_outputs, key):
             warnings.append(f"Persona '{key}' returned empty output")
 
-    personas_filled = sum(1 for k in ("bull", "bear", "macro", "technicals")
-                          if getattr(persona_outputs, k))
+    personas_filled = sum(
+        1 for k in ("bull", "bear", "macro", "technicals") if getattr(persona_outputs, k)
+    )
 
-    add_node_metadata({
-        "personas_filled": personas_filled,
-        "composed_prompt_length": len(composed_prompt),
-    })
+    add_node_metadata(
+        {
+            "personas_filled": personas_filled,
+            "composed_prompt_length": len(composed_prompt),
+        }
+    )
 
     log.info("personas_filled=%d  prompt_len=%d", personas_filled, len(composed_prompt))
 

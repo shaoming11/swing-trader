@@ -7,6 +7,7 @@ No LLM involved.
 Uses `requests` (synchronous) instead of httpx so the asyncio event loop is
 never touched. Call via asyncio.to_thread from async contexts.
 """
+
 from __future__ import annotations
 
 import os
@@ -25,45 +26,45 @@ _FRED = "https://api.stlouisfed.org/fred"
 
 _SECTOR_SERIES: dict[str, list[tuple[str, str, str]]] = {
     "Technology": [
-        ("DGS10",    "10-Year Treasury Yield",  "%"),
-        ("FEDFUNDS", "Fed Funds Rate",           "%"),
-        ("CPIAUCSL", "CPI (index)",              ""),
+        ("DGS10", "10-Year Treasury Yield", "%"),
+        ("FEDFUNDS", "Fed Funds Rate", "%"),
+        ("CPIAUCSL", "CPI (index)", ""),
     ],
     "Financials": [
-        ("FEDFUNDS",      "Fed Funds Rate",         "%"),
-        ("DGS10",         "10-Year Treasury Yield", "%"),
-        ("T10Y2Y",        "10Y-2Y Yield Spread",    "%"),
-        ("BAMLH0A0HYM2",  "HY OAS Spread",          "bps"),
+        ("FEDFUNDS", "Fed Funds Rate", "%"),
+        ("DGS10", "10-Year Treasury Yield", "%"),
+        ("T10Y2Y", "10Y-2Y Yield Spread", "%"),
+        ("BAMLH0A0HYM2", "HY OAS Spread", "bps"),
     ],
     "Real Estate": [
-        ("FEDFUNDS",     "Fed Funds Rate",        "%"),
-        ("DGS10",        "10-Year Treasury Yield","%"),
+        ("FEDFUNDS", "Fed Funds Rate", "%"),
+        ("DGS10", "10-Year Treasury Yield", "%"),
         ("MORTGAGE30US", "30-Year Mortgage Rate", "%"),
     ],
     "Consumer Discretionary": [
-        ("UNRATE",   "Unemployment Rate",      "%"),
-        ("UMCSENT",  "Consumer Sentiment",     "index"),
-        ("CPIAUCSL", "CPI (index)",            ""),
+        ("UNRATE", "Unemployment Rate", "%"),
+        ("UMCSENT", "Consumer Sentiment", "index"),
+        ("CPIAUCSL", "CPI (index)", ""),
     ],
     "Energy": [
-        ("DCOILWTICO", "WTI Crude Oil",    "$/bbl"),
-        ("DHHNGSP",    "Natural Gas",      "$/MMBtu"),
+        ("DCOILWTICO", "WTI Crude Oil", "$/bbl"),
+        ("DHHNGSP", "Natural Gas", "$/MMBtu"),
     ],
     "Healthcare": [
         ("CPIMEDSL", "Medical CPI (index)", ""),
-        ("FEDFUNDS", "Fed Funds Rate",      "%"),
+        ("FEDFUNDS", "Fed Funds Rate", "%"),
     ],
     "Industrials": [
-        ("INDPRO",     "Industrial Production Index", "index"),
-        ("DCOILWTICO", "WTI Crude Oil",               "$/bbl"),
+        ("INDPRO", "Industrial Production Index", "index"),
+        ("DCOILWTICO", "WTI Crude Oil", "$/bbl"),
     ],
 }
 
 _DEFAULT_SERIES: list[tuple[str, str, str]] = [
-    ("CPIAUCSL", "CPI (index)",        ""),
-    ("FEDFUNDS", "Fed Funds Rate",     "%"),
-    ("UNRATE",   "Unemployment Rate",  "%"),
-    ("GDP",      "GDP",                "$B"),
+    ("CPIAUCSL", "CPI (index)", ""),
+    ("FEDFUNDS", "Fed Funds Rate", "%"),
+    ("UNRATE", "Unemployment Rate", "%"),
+    ("GDP", "GDP", "$B"),
 ]
 
 _FOMC_RELEASE_ID = "82"
@@ -91,7 +92,7 @@ def _fred_get(endpoint: str, params: dict) -> Any:
         except Exception as exc:
             last_exc = exc
             if attempt < _MAX_RETRIES - 1:
-                time.sleep(2 ** attempt)
+                time.sleep(2**attempt)
     raise last_exc  # type: ignore[misc]
 
 

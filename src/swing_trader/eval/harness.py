@@ -8,25 +8,27 @@ Typical usage during development:
     runs = load_golden_set("datasets/golden_set/entries/")
     print(calibration_curve(runs))
 """
+
 from __future__ import annotations
 
 import json
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 
 # ── Data types ────────────────────────────────────────────────────────────────
 
+
 @dataclass
 class EvalRecord:
     """Minimal representation of a pipeline_runs row for eval purposes."""
+
     run_id: str
     ticker: str
     pipeline_version: str
     confidence: float
-    direction: str                  # bullish | bearish | neutral
+    direction: str  # bullish | bearish | neutral
     magnitude_bucket: str
     dominant_drivers: list[str]
     guardrail_retries: int = 0
@@ -154,6 +156,7 @@ class RegressionReport:
 
     def vs(self, baseline: "RegressionReport") -> dict:
         """Compare this version against a baseline."""
+
         def _diff(a, b):
             if a is None or b is None:
                 return None
@@ -165,7 +168,9 @@ class RegressionReport:
             "hit_rate_delta_pp": _diff(self.hit_rate_pct, baseline.hit_rate_pct),
             "confidence_delta_pp": _diff(self.avg_confidence_pct, baseline.avg_confidence_pct),
             "retries_delta": round(self.avg_retries - baseline.avg_retries, 2),
-            "cancellation_delta_pp": round(self.cancellation_rate_pct - baseline.cancellation_rate_pct, 1),
+            "cancellation_delta_pp": round(
+                self.cancellation_rate_pct - baseline.cancellation_rate_pct, 1
+            ),
             "regression_detected": (
                 (self.hit_rate_pct or 0) < (baseline.hit_rate_pct or 0) - 5.0
                 or self.cancellation_rate_pct > baseline.cancellation_rate_pct + 10.0
@@ -175,16 +180,17 @@ class RegressionReport:
 
 # ── Eval functions ────────────────────────────────────────────────────────────
 
+
 def calibration_curve(records: list[EvalRecord]) -> CalibrationCurve:
     """Compute the calibration curve from a list of eval records.
 
     Requires records with ground truth populated (hit is not None).
     """
     bucket_defs = [
-        CalibrationBucket("90%+",    0.85, 1.00),
-        CalibrationBucket("70-85%",  0.65, 0.85),
-        CalibrationBucket("50-65%",  0.45, 0.65),
-        CalibrationBucket("<50%",    0.00, 0.45),
+        CalibrationBucket("90%+", 0.85, 1.00),
+        CalibrationBucket("70-85%", 0.65, 0.85),
+        CalibrationBucket("50-65%", 0.45, 0.65),
+        CalibrationBucket("<50%", 0.00, 0.45),
     ]
 
     grounded = [r for r in records if r.has_ground_truth and not r.pipeline_cancelled]
@@ -243,8 +249,9 @@ def price_target_error_by_ticker(records: list[EvalRecord]) -> dict[str, dict]:
             "count": n,
             "mean_abs_error": round(sum(errors) / n, 1),
             "median_abs_error": round(
-                errors_sorted[n // 2] if n % 2 else
-                (errors_sorted[n // 2 - 1] + errors_sorted[n // 2]) / 2,
+                errors_sorted[n // 2]
+                if n % 2
+                else (errors_sorted[n // 2 - 1] + errors_sorted[n // 2]) / 2,
                 1,
             ),
         }
@@ -280,8 +287,12 @@ def regression_comparison(records: list[EvalRecord]) -> list[dict]:
             RegressionReport(
                 pipeline_version=version,
                 runs=n,
-                hit_rate_pct=round(sum(r.hit for r in grounded if r.hit) / n * 100, 1) if n else None,
-                avg_confidence_pct=round(sum(r.confidence for r in grounded) / n * 100, 1) if n else None,
+                hit_rate_pct=round(sum(r.hit for r in grounded if r.hit) / n * 100, 1)
+                if n
+                else None,
+                avg_confidence_pct=round(sum(r.confidence for r in grounded) / n * 100, 1)
+                if n
+                else None,
                 avg_retries=round(sum(r.guardrail_retries for r in runs) / len(runs), 2),
                 cancellation_rate_pct=round(
                     sum(r.pipeline_cancelled for r in runs) / len(runs) * 100, 1
@@ -315,14 +326,16 @@ def _report_to_dict(r: RegressionReport) -> dict:
 
 # ── Retrieval eval ────────────────────────────────────────────────────────────
 
+
 @dataclass
 class RetrievalEvalEntry:
     """One query from the retrieval eval dataset."""
+
     ticker: str
     window_start: str
     window_end: str
-    relevant_file_paths: list[str]      # manually labeled relevant files
-    irrelevant_file_paths: list[str]    # manually labeled irrelevant noise
+    relevant_file_paths: list[str]  # manually labeled relevant files
+    irrelevant_file_paths: list[str]  # manually labeled irrelevant noise
 
 
 @dataclass
@@ -412,6 +425,7 @@ async def run_retrieval_eval(
 
 
 # ── Golden set loader ─────────────────────────────────────────────────────────
+
 
 def load_golden_set(directory: str | Path) -> list[EvalRecord]:
     """Load all golden set JSON entries from a directory into EvalRecord objects."""

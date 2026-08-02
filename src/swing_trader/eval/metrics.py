@@ -3,6 +3,7 @@
 Fetches actual price data for a window, computes what *actually* happened,
 and scores a pipeline prediction against reality.
 """
+
 from __future__ import annotations
 
 import logging
@@ -16,16 +17,18 @@ log = logging.getLogger(__name__)
 
 # ── Ground truth ─────────────────────────────────────────────────────────────
 
+
 @dataclass
 class GroundTruth:
     """What actually happened to the stock in the window."""
+
     ticker: str
     window_start: date
     window_end: date
     price_start: float | None
     price_end: float | None
     actual_return_pct: float | None  # (end - start) / start * 100
-    actual_direction: str | None     # bullish | bearish | neutral
+    actual_direction: str | None  # bullish | bearish | neutral
     actual_magnitude_bucket: str | None  # 0-3% | 3-8% | 8%+
 
 
@@ -48,17 +51,25 @@ def fetch_ground_truth(ticker: str, window_start: date, window_end: date) -> Gro
     except Exception as exc:
         log.warning("yfinance download failed for %s: %s", ticker, exc)
         return GroundTruth(
-            ticker=ticker, window_start=window_start, window_end=window_end,
-            price_start=None, price_end=None,
-            actual_return_pct=None, actual_direction=None,
+            ticker=ticker,
+            window_start=window_start,
+            window_end=window_end,
+            price_start=None,
+            price_end=None,
+            actual_return_pct=None,
+            actual_direction=None,
             actual_magnitude_bucket=None,
         )
 
     if df.empty:
         return GroundTruth(
-            ticker=ticker, window_start=window_start, window_end=window_end,
-            price_start=None, price_end=None,
-            actual_return_pct=None, actual_direction=None,
+            ticker=ticker,
+            window_start=window_start,
+            window_end=window_end,
+            price_start=None,
+            price_end=None,
+            actual_return_pct=None,
+            actual_direction=None,
             actual_magnitude_bucket=None,
         )
 
@@ -72,9 +83,13 @@ def fetch_ground_truth(ticker: str, window_start: date, window_end: date) -> Gro
 
     if start_prices.empty or end_prices.empty:
         return GroundTruth(
-            ticker=ticker, window_start=window_start, window_end=window_end,
-            price_start=None, price_end=None,
-            actual_return_pct=None, actual_direction=None,
+            ticker=ticker,
+            window_start=window_start,
+            window_end=window_end,
+            price_start=None,
+            price_end=None,
+            actual_return_pct=None,
+            actual_direction=None,
             actual_magnitude_bucket=None,
         )
 
@@ -107,9 +122,11 @@ def fetch_ground_truth(ticker: str, window_start: date, window_end: date) -> Gro
 
 # ── Per-run scoring ──────────────────────────────────────────────────────────
 
+
 @dataclass
 class RunScore:
     """Score a single pipeline run against ground truth."""
+
     ticker: str
     predicted_direction: str
     predicted_magnitude: str

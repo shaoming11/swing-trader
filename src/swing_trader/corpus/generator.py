@@ -14,6 +14,7 @@ Usage:
     # Daily live run (defaults to yesterday)
     asyncio.run(live_run(["AAPL", "MSFT"]))
 """
+
 from __future__ import annotations
 
 import asyncio

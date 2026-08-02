@@ -4,6 +4,7 @@ Aggregates per-run scores into a QuarterReport, checks each metric against
 its benchmark threshold, and produces a structured failure report that the
 self-improvement loop can feed to the LLM prompt rewriter.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -15,16 +16,17 @@ from swing_trader.eval.metrics import RunScore
 # Each is (metric_name, threshold, comparison).  "gte" = score must be >= threshold.
 
 BENCHMARKS: dict[str, tuple[float, str]] = {
-    "direction_accuracy":        (0.55, "gte"),   # >= 55%
-    "magnitude_accuracy":        (0.35, "gte"),   # >= 35%
-    "calibration_error":         (0.15, "lte"),   # <= 15pp avg drift
-    "high_confidence_precision": (0.65, "gte"),   # >= 65% hit rate when conf >= 0.7
-    "cancellation_rate":         (0.20, "lte"),   # <= 20%
-    "mean_price_target_error":   (12.0, "lte"),   # <= 12pp
+    "direction_accuracy": (0.55, "gte"),  # >= 55%
+    "magnitude_accuracy": (0.35, "gte"),  # >= 35%
+    "calibration_error": (0.15, "lte"),  # <= 15pp avg drift
+    "high_confidence_precision": (0.65, "gte"),  # >= 65% hit rate when conf >= 0.7
+    "cancellation_rate": (0.20, "lte"),  # <= 20%
+    "mean_price_target_error": (12.0, "lte"),  # <= 12pp
 }
 
 
 # ── Quarter report ───────────────────────────────────────────────────────────
+
 
 @dataclass
 class MetricResult:
@@ -50,6 +52,7 @@ class MetricResult:
 @dataclass
 class QuarterReport:
     """Aggregated eval for one quarter across all tickers."""
+
     quarter_label: str  # e.g. "2025-Q1"
     total_runs: int
     scored_runs: int
@@ -115,9 +118,11 @@ class QuarterReport:
             "FAILING METRICS:",
         ]
         for m in self.failing_metrics:
-            lines.append(f"  - {m.name}: got {m.value:.3f}, need {m.benchmark} "
-                         f"({'at least' if m.comparison == 'gte' else 'at most'}), "
-                         f"gap = {m.gap:.3f}")
+            lines.append(
+                f"  - {m.name}: got {m.value:.3f}, need {m.benchmark} "
+                f"({'at least' if m.comparison == 'gte' else 'at most'}), "
+                f"gap = {m.gap:.3f}"
+            )
 
         if self.driver_miss_rates:
             lines.append("\nDRIVER MISS RATES (higher = worse):")
@@ -139,6 +144,7 @@ class QuarterReport:
 
 
 # ── Scoring aggregation ──────────────────────────────────────────────────────
+
 
 def build_quarter_report(
     quarter_label: str,
@@ -189,8 +195,9 @@ def build_quarter_report(
     for name, (threshold, cmp) in BENCHMARKS.items():
         val = raw[name]
         passed = val >= threshold if cmp == "gte" else val <= threshold
-        metrics.append(MetricResult(name=name, value=val, benchmark=threshold,
-                                    comparison=cmp, passed=passed))
+        metrics.append(
+            MetricResult(name=name, value=val, benchmark=threshold, comparison=cmp, passed=passed)
+        )
 
     # Per-ticker failure breakdown
     ticker_failures: dict[str, list[str]] = {}
@@ -212,9 +219,7 @@ def build_quarter_report(
             for d in drivers:
                 driver_miss.setdefault(d, []).append(not score.hit)
     driver_miss_rates = {
-        d: sum(misses) / len(misses)
-        for d, misses in driver_miss.items()
-        if misses
+        d: sum(misses) / len(misses) for d, misses in driver_miss.items() if misses
     }
 
     return QuarterReport(

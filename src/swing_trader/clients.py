@@ -8,6 +8,7 @@ Current backend:
   - Fast/mid LLM: Groq (cloud, free)
   - Judge LLM: Groq (cloud, free) — handles the 70B model
 """
+
 from __future__ import annotations
 
 import os

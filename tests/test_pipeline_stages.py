@@ -3,6 +3,7 @@
 All external dependencies (LLM APIs, vector store, disk cache, yfinance, FRED) are mocked.
 Run with: pytest tests/test_pipeline_stages.py -v
 """
+
 from __future__ import annotations
 
 import json
@@ -79,16 +80,25 @@ def mock_macro() -> MacroResult:
         sector="Technology",
         series=[
             MacroDataPoint(
-                series_id="DFF", label="Fed Funds Rate",
-                value_start=5.33, value_end=5.33, unit="%",
+                series_id="DFF",
+                label="Fed Funds Rate",
+                value_start=5.33,
+                value_end=5.33,
+                unit="%",
             ),
             MacroDataPoint(
-                series_id="T10Y2Y", label="10Y-2Y Spread",
-                value_start=-0.35, value_end=-0.28, unit="%",
+                series_id="T10Y2Y",
+                label="10Y-2Y Spread",
+                value_start=-0.35,
+                value_end=-0.28,
+                unit="%",
             ),
             MacroDataPoint(
-                series_id="CPIAUCSL", label="CPI YoY",
-                value_start=3.4, value_end=3.5, unit="%",
+                series_id="CPIAUCSL",
+                label="CPI YoY",
+                value_start=3.4,
+                value_end=3.5,
+                unit="%",
             ),
         ],
         fomc_in_window=True,
@@ -118,14 +128,18 @@ def mock_numeric_block() -> NumericBlock:
 def mock_qual_items() -> list[QualItem]:
     return [
         QualItem(
-            source_type="analyst", date="2024-02-02", source="Morgan Stanley",
+            source_type="analyst",
+            date="2024-02-02",
+            source="Morgan Stanley",
             sentiment_label="bullish",
             sentiment_reason="Price target raised to $220",
             summary="Morgan Stanley raised AAPL PT from $200 to $220 on services growth.",
             relevance_score=0.92,
         ),
         QualItem(
-            source_type="news", date="2024-01-18", source="Reuters",
+            source_type="news",
+            date="2024-01-18",
+            source="Reuters",
             sentiment_label="bearish",
             sentiment_reason="iPhone shipments declined in China",
             summary="Apple iPhone shipments in China fell 3.7% amid Huawei competition.",
@@ -171,7 +185,9 @@ class TestDataPullNode:
     ):
         with (
             patch("swing_trader.data_pull.node.disk_cache") as cache_mock,
-            patch("swing_trader.data_pull.node.pull_fundamentals", new_callable=AsyncMock) as fund_mock,
+            patch(
+                "swing_trader.data_pull.node.pull_fundamentals", new_callable=AsyncMock
+            ) as fund_mock,
             patch("swing_trader.data_pull.node.pull_macro") as macro_mock,
         ):
             cache_mock.get_quarter.return_value = None
@@ -195,7 +211,9 @@ class TestDataPullNode:
         }
         with (
             patch("swing_trader.data_pull.node.disk_cache") as cache_mock,
-            patch("swing_trader.data_pull.node.pull_fundamentals", new_callable=AsyncMock) as fund_mock,
+            patch(
+                "swing_trader.data_pull.node.pull_fundamentals", new_callable=AsyncMock
+            ) as fund_mock,
             patch("swing_trader.data_pull.node.pull_macro") as macro_mock,
         ):
             cache_mock.get_quarter.return_value = cached_data
@@ -212,7 +230,9 @@ class TestDataPullNode:
 
         with (
             patch("swing_trader.data_pull.node.disk_cache") as cache_mock,
-            patch("swing_trader.data_pull.node.pull_fundamentals", new_callable=AsyncMock) as fund_mock,
+            patch(
+                "swing_trader.data_pull.node.pull_fundamentals", new_callable=AsyncMock
+            ) as fund_mock,
             patch("swing_trader.data_pull.node.pull_macro") as macro_mock,
         ):
             cache_mock.get_quarter.return_value = None
@@ -319,14 +339,22 @@ class TestRetrieverInternals:
 
         items = [
             QualItem(
-                source_type="analyst", date="2024-01-01", source="MS",
-                sentiment_label="bullish", sentiment_reason="PT raised",
-                summary="x" * 2000, relevance_score=0.9,
+                source_type="analyst",
+                date="2024-01-01",
+                source="MS",
+                sentiment_label="bullish",
+                sentiment_reason="PT raised",
+                summary="x" * 2000,
+                relevance_score=0.9,
             ),
             QualItem(
-                source_type="news", date="2024-01-02", source="Reuters",
-                sentiment_label="neutral", sentiment_reason="Flat",
-                summary="y" * 2000, relevance_score=0.8,
+                source_type="news",
+                date="2024-01-02",
+                source="Reuters",
+                sentiment_label="neutral",
+                sentiment_reason="Flat",
+                summary="y" * 2000,
+                relevance_score=0.8,
             ),
         ]
         result = _truncate_to_budget(items, max_tokens=600)
@@ -372,11 +400,18 @@ class TestRetrieverInternals:
 
         with (
             patch("swing_trader.rag.retriever.get_vector_store", return_value=mock_store),
-            patch("swing_trader.rag.retriever._embed", new_callable=AsyncMock, return_value=[0.1] * 768),
-            patch("swing_trader.rag.retriever._rerank", new_callable=AsyncMock,
-                  side_effect=lambda q, results, top_n: [
-                      {**r, "rerank_score": r.get("score", 0.5)} for r in results[:top_n]
-                  ]),
+            patch(
+                "swing_trader.rag.retriever._embed",
+                new_callable=AsyncMock,
+                return_value=[0.1] * 768,
+            ),
+            patch(
+                "swing_trader.rag.retriever._rerank",
+                new_callable=AsyncMock,
+                side_effect=lambda q, results, top_n: [
+                    {**r, "rerank_score": r.get("score", 0.5)} for r in results[:top_n]
+                ],
+            ),
         ):
             block = await retrieve("AAPL", date(2024, 1, 1), date(2024, 3, 31))
 
@@ -455,17 +490,19 @@ class TestPersonaReasoningNode:
 # ── Stage 4: Judge Synthesis ─────────────────────────────────────────────────
 
 
-VALID_JUDGE_JSON = json.dumps({
-    "direction": "bullish",
-    "magnitude_bucket": "3-8%",
-    "confidence": 0.72,
-    "dominant_drivers": ["fundamental", "sentiment"],
-    "invalidation_condition": "AAPL closes below $175 for 3 consecutive trading days",
-    "hold_window_bucket": "weeks",
-    "thesis": "Strong Q1 earnings beat with services momentum supports bullish stance despite China headwinds",
-    "sided_with": ["bull", "technicals"],
-    "sided_reasoning": "Bull case supported by concrete earnings data; technicals confirm momentum",
-})
+VALID_JUDGE_JSON = json.dumps(
+    {
+        "direction": "bullish",
+        "magnitude_bucket": "3-8%",
+        "confidence": 0.72,
+        "dominant_drivers": ["fundamental", "sentiment"],
+        "invalidation_condition": "AAPL closes below $175 for 3 consecutive trading days",
+        "hold_window_bucket": "weeks",
+        "thesis": "Strong Q1 earnings beat with services momentum supports bullish stance despite China headwinds",
+        "sided_with": ["bull", "technicals"],
+        "sided_reasoning": "Bull case supported by concrete earnings data; technicals confirm momentum",
+    }
+)
 
 
 class TestJudgeSynthesisNode:
@@ -473,8 +510,10 @@ class TestJudgeSynthesisNode:
     async def test_judge_parses_valid_json(self, base_state):
         base_state["composed_prompt"] = "Test prompt"
         base_state["persona_outputs"] = PersonaOutputs(
-            bull="Bullish analysis", bear="Bearish analysis",
-            macro="Macro analysis", technicals="Technical analysis",
+            bull="Bullish analysis",
+            bear="Bearish analysis",
+            macro="Macro analysis",
+            technicals="Technical analysis",
         )
 
         async def fake_create(**kwargs):
@@ -498,7 +537,10 @@ class TestJudgeSynthesisNode:
     async def test_judge_handles_json_with_surrounding_text(self, base_state):
         base_state["composed_prompt"] = "Test prompt"
         base_state["persona_outputs"] = PersonaOutputs(
-            bull="Bull", bear="Bear", macro="Macro", technicals="Tech",
+            bull="Bull",
+            bear="Bear",
+            macro="Macro",
+            technicals="Tech",
         )
 
         wrapped = f"Here is my analysis:\n{VALID_JUDGE_JSON}\nEnd of response."
@@ -537,7 +579,10 @@ class TestJudgeSynthesisNode:
         base_state["composed_prompt"] = "Test prompt"
         base_state["thesis_hint"] = "I think AAPL will rally on services growth"
         base_state["persona_outputs"] = PersonaOutputs(
-            bull="Bull", bear="Bear", macro="Macro", technicals="Tech",
+            bull="Bull",
+            bear="Bear",
+            macro="Macro",
+            technicals="Tech",
         )
 
         captured_messages = []
@@ -681,7 +726,9 @@ class TestFullPipeline:
         # Stage 1: data pull
         with (
             patch("swing_trader.data_pull.node.disk_cache") as cache_mock,
-            patch("swing_trader.data_pull.node.pull_fundamentals", new_callable=AsyncMock) as fund_mock,
+            patch(
+                "swing_trader.data_pull.node.pull_fundamentals", new_callable=AsyncMock
+            ) as fund_mock,
             patch("swing_trader.data_pull.node.pull_macro") as macro_mock,
         ):
             cache_mock.get_quarter.return_value = None
@@ -700,14 +747,22 @@ class TestFullPipeline:
             chunks_used=2,
             items=[
                 QualItem(
-                    source_type="analyst", date="2024-02-02", source="MS",
-                    sentiment_label="bullish", sentiment_reason="PT raised",
-                    summary="Analyst raised price target.", relevance_score=0.9,
+                    source_type="analyst",
+                    date="2024-02-02",
+                    source="MS",
+                    sentiment_label="bullish",
+                    sentiment_reason="PT raised",
+                    summary="Analyst raised price target.",
+                    relevance_score=0.9,
                 ),
                 QualItem(
-                    source_type="news", date="2024-01-18", source="Reuters",
-                    sentiment_label="bearish", sentiment_reason="China risk",
-                    summary="iPhone shipments declining.", relevance_score=0.85,
+                    source_type="news",
+                    date="2024-01-18",
+                    source="Reuters",
+                    sentiment_label="bearish",
+                    sentiment_reason="China risk",
+                    summary="iPhone shipments declining.",
+                    relevance_score=0.85,
                 ),
             ],
         )
@@ -740,8 +795,7 @@ class TestFullPipeline:
 
         assert state["persona_outputs"] is not None
         assert all(
-            getattr(state["persona_outputs"], p)
-            for p in ("bull", "bear", "macro", "technicals")
+            getattr(state["persona_outputs"], p) for p in ("bull", "bear", "macro", "technicals")
         )
 
         # Stage 4: judge synthesis

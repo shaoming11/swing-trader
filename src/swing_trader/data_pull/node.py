@@ -9,6 +9,7 @@ concurrently in the thread pool via asyncio.to_thread. The asyncio event loop
 is never touched by network I/O, which prevents the OSError / RetryError that
 appeared when httpx competed with yfinance inside uvicorn's event loop.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -48,10 +49,14 @@ async def data_pull_node(state: PipelineState) -> PipelineState:
                 pull_fundamentals(ticker, qstart, qend),
                 asyncio.to_thread(pull_macro, ticker, qstart, qend),
             )
-            disk_cache.set_quarter(ticker, qlabel, {
-                "fundamentals": fundamentals.model_dump(mode="json"),
-                "macro": macro.model_dump(mode="json"),
-            })
+            disk_cache.set_quarter(
+                ticker,
+                qlabel,
+                {
+                    "fundamentals": fundamentals.model_dump(mode="json"),
+                    "macro": macro.model_dump(mode="json"),
+                },
+            )
 
         fetched.append((qlabel, qstart, qend, fundamentals, macro))
 
@@ -61,17 +66,20 @@ async def data_pull_node(state: PipelineState) -> PipelineState:
 
     block = build_numeric_block(ticker, window_start, window_end, fetched)
 
-    add_node_metadata({
-        "quarters": [q[0] for q in fetched],
-        "sources_used": block.sources_used,
-        "data_gaps_count": len(block.data_gaps),
-        "macro_series_pulled": block.macro_series_pulled,
-    })
+    add_node_metadata(
+        {
+            "quarters": [q[0] for q in fetched],
+            "sources_used": block.sources_used,
+            "data_gaps_count": len(block.data_gaps),
+            "macro_series_pulled": block.macro_series_pulled,
+        }
+    )
 
     return {**state, "numeric_block": block, "warnings": warnings}
 
 
 # ── Quarter enumeration ───────────────────────────────────────────────────────
+
 
 def _iter_quarters(
     start: date,

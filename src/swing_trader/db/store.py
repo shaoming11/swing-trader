@@ -3,13 +3,11 @@
 All writes are fire-and-forget (non-blocking to the pipeline hot path).
 Use asyncio.create_task() to dispatch writes in the background.
 """
+
 from __future__ import annotations
 
-import asyncio
 import json
 from datetime import datetime
-from typing import Any
-from uuid import UUID
 
 from swing_trader.db.pool import get_pool
 from swing_trader.state import PipelineState
@@ -35,7 +33,6 @@ async def write_eval_record(state: PipelineState, trace_url: str | None = None) 
         "user_id": state.get("user_id"),
         "run_type": state.get("run_type", "live"),
         "pipeline_version": __import__("os").getenv("PIPELINE_VERSION", "0.0.0"),
-
         # Layer 1
         "direction": layer1.direction if layer1 else None,
         "magnitude_bucket": layer1.magnitude_bucket if layer1 else None,
@@ -46,7 +43,6 @@ async def write_eval_record(state: PipelineState, trace_url: str | None = None) 
         "thesis": layer1.thesis if layer1 else None,
         "sided_with": list(layer1.sided_with) if layer1 else None,
         "sided_reasoning": layer1.sided_reasoning if layer1 else None,
-
         # Layer 2
         "gate_passed": layer2.gate_passed if layer2 else None,
         "gate_skip_reason": layer2.gate_skip_reason if layer2 else None,
@@ -59,39 +55,37 @@ async def write_eval_record(state: PipelineState, trace_url: str | None = None) 
         "kelly_full": layer2.kelly_full if layer2 else None,
         "kelly_fractional": layer2.kelly_fractional if layer2 else None,
         "volatility_used": layer2.volatility_used if layer2 else None,
-
         # Debug: inputs
         "numeric_block_text": numeric.rendered_text if numeric else None,
         "data_gaps": list(numeric.data_gaps) if numeric else None,
         "sources_used": list(numeric.sources_used) if numeric else None,
         "rag_chunks_retrieved": rag.chunks_retrieved if rag else 0,
         "rag_chunks_used": rag.chunks_used if rag else 0,
-        "rag_top_chunks": json.dumps([
-            {
-                "content": item.summary,
-                "score": item.relevance_score,
-                "source_type": item.source_type,
-                "date": item.date,
-            }
-            for item in (rag.items if rag else [])
-        ]),
-
+        "rag_top_chunks": json.dumps(
+            [
+                {
+                    "content": item.summary,
+                    "score": item.relevance_score,
+                    "source_type": item.source_type,
+                    "date": item.date,
+                }
+                for item in (rag.items if rag else [])
+            ]
+        ),
         # Debug: reasoning
         "persona_bull_output": personas.bull if personas else None,
         "persona_bear_output": personas.bear if personas else None,
         "persona_macro_output": personas.macro if personas else None,
         "persona_technicals_output": personas.technicals if personas else None,
         "judge_reasoning": state.get("judge_reasoning"),
-
         # Debug: guardrails
-        "guardrail_checks": json.dumps([
-            gc.model_dump() for gc in (state.get("guardrail_checks") or [])
-        ]),
+        "guardrail_checks": json.dumps(
+            [gc.model_dump() for gc in (state.get("guardrail_checks") or [])]
+        ),
         "guardrail_retries": state.get("guardrail_retries", 0),
         "pipeline_cancelled": state.get("pipeline_cancelled", False),
         "cancellation_reason": state.get("cancellation_reason"),
         "warnings": list(state.get("warnings", [])),
-
         "langsmith_trace_url": trace_url,
         "completed_at": datetime.utcnow(),
     }
@@ -178,7 +172,5 @@ async def write_eval_record(state: PipelineState, trace_url: str | None = None) 
 async def get_run(run_id: str) -> dict | None:
     pool = await get_pool()
     async with pool.acquire() as conn:
-        row = await conn.fetchrow(
-            "SELECT * FROM pipeline_runs WHERE run_id = $1", run_id
-        )
+        row = await conn.fetchrow("SELECT * FROM pipeline_runs WHERE run_id = $1", run_id)
     return dict(row) if row else None

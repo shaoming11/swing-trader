@@ -8,6 +8,7 @@ freezing the asyncio event loop — which would corrupt concurrent httpx
 connections (e.g. FRED) — the actual network calls run inside a thread via
 asyncio.to_thread. Cache hits bypass the thread entirely.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -19,8 +20,18 @@ from swing_trader.data_pull import cache as disk_cache
 from swing_trader.schemas.pipeline import FundamentalsResult
 
 _CORPORATE_ACTION_KEYWORDS = {
-    "buyback", "repurchase", "acquisition", "merger", "acquired",
-    "dividend", "split", "ceo", "cfo", "launch", "recall", "settlement",
+    "buyback",
+    "repurchase",
+    "acquisition",
+    "merger",
+    "acquired",
+    "dividend",
+    "split",
+    "ceo",
+    "cfo",
+    "launch",
+    "recall",
+    "settlement",
 }
 
 
@@ -149,10 +160,19 @@ def _fetch_from_yfinance(
                 low_52 = round(float(all_closes.min()), 2)
                 # First close on or after window_start
                 in_window = hist[hist.index.date >= window_start]
-                price_start = round(float(in_window["Close"].iloc[0]), 2) if not in_window.empty else None
-            disk_cache.set_price(ticker, window_start, window_end, {
-                "start": price_start, "high_52": high_52, "low_52": low_52,
-            })
+                price_start = (
+                    round(float(in_window["Close"].iloc[0]), 2) if not in_window.empty else None
+                )
+            disk_cache.set_price(
+                ticker,
+                window_start,
+                window_end,
+                {
+                    "start": price_start,
+                    "high_52": high_52,
+                    "low_52": low_52,
+                },
+            )
     except Exception as e:
         gaps.append(f"yfinance price history: {e}")
 
@@ -201,7 +221,9 @@ def _fetch_from_yfinance(
         revenue_surprise_pct=round(rev_surprise, 1) if rev_surprise is not None else None,
         revenue_yoy_pct=round(rev_yoy, 1) if rev_yoy is not None else None,
         gross_margin_pct=round(gross_margin, 1) if gross_margin is not None else None,
-        prior_gross_margin_pct=round(prior_gross_margin, 1) if prior_gross_margin is not None else None,
+        prior_gross_margin_pct=round(prior_gross_margin, 1)
+        if prior_gross_margin is not None
+        else None,
         guidance_direction=guidance_direction,
         guidance_note=guidance_note,
         pe_trailing=round(pe_trailing, 1) if pe_trailing else None,
@@ -215,6 +237,7 @@ def _fetch_from_yfinance(
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
 
 def _safe_float(val) -> float | None:
     try:

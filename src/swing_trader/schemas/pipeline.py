@@ -3,14 +3,14 @@
 These are the canonical data contracts shared across every module.
 Import from here — never redefine these elsewhere.
 """
+
 from __future__ import annotations
 
 import re
-from datetime import date, datetime
+from datetime import date
 from typing import Literal
-from uuid import UUID, uuid4
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator
 
 
 # ── Layer 1 output ────────────────────────────────────────────────────────────
@@ -65,6 +65,7 @@ class Layer1Output(BaseModel):
 
 # ── Layer 2 output ────────────────────────────────────────────────────────────
 
+
 class PositionCard(BaseModel):
     gate_passed: bool
     gate_skip_reason: str | None = None
@@ -73,10 +74,10 @@ class PositionCard(BaseModel):
     ticker: str = ""
     entry_price: float | None = None
     target_price: float | None = None
-    stop_loss: str | None = None       # price string or event trigger description
+    stop_loss: str | None = None  # price string or event trigger description
     hold_window_start: date | None = None
     hold_window_end: date | None = None
-    position_size_pct: float | None = None   # fraction of portfolio, e.g. 0.05 = 5%
+    position_size_pct: float | None = None  # fraction of portfolio, e.g. 0.05 = 5%
 
     # Sizing audit trail
     kelly_full: float | None = None
@@ -98,7 +99,7 @@ class QualItem(BaseModel):
     source: str
     sentiment_label: SentimentLabel
     sentiment_reason: str
-    summary: str        # chunk body, max 200 tokens
+    summary: str  # chunk body, max 200 tokens
     relevance_score: float
 
 
@@ -145,19 +146,20 @@ class QualitativeBlock(BaseModel):
 
 # ── Numeric block (data pull output) ─────────────────────────────────────────
 
+
 class FundamentalsResult(BaseModel):
     ticker: str
     report_date: date | None = None
     eps_actual: float | None = None
     eps_estimate: float | None = None
     eps_surprise_pct: float | None = None
-    revenue_actual_b: float | None = None      # billions
+    revenue_actual_b: float | None = None  # billions
     revenue_estimate_b: float | None = None
     revenue_surprise_pct: float | None = None
     revenue_yoy_pct: float | None = None
     gross_margin_pct: float | None = None
     prior_gross_margin_pct: float | None = None
-    guidance_direction: str | None = None      # raised | lowered | maintained | not provided
+    guidance_direction: str | None = None  # raised | lowered | maintained | not provided
     guidance_note: str = ""
     pe_trailing: float | None = None
     pe_forward: float | None = None
@@ -187,7 +189,7 @@ class MacroDataPoint(BaseModel):
 
 class FOMCEvent(BaseModel):
     meeting_date: str
-    decision: str     # e.g. "held at 5.25-5.50%" or "cut 25bps to 5.00-5.25%"
+    decision: str  # e.g. "held at 5.25-5.50%" or "cut 25bps to 5.00-5.25%"
 
 
 class MacroResult(BaseModel):
@@ -218,6 +220,7 @@ class NumericBlock(BaseModel):
 
 # ── Guardrail ─────────────────────────────────────────────────────────────────
 
+
 class GuardrailCheck(BaseModel):
     name: str
     passed: bool
@@ -225,6 +228,7 @@ class GuardrailCheck(BaseModel):
 
 
 # ── Persona outputs ───────────────────────────────────────────────────────────
+
 
 class PersonaOutputs(BaseModel):
     bull: str = ""
@@ -244,7 +248,5 @@ class PersonaOutputs(BaseModel):
         filled = [t for t in texts if t]
         if not filled:
             return 0.5
-        matches = sum(
-            any(kw in t.lower() for kw in keywords) for t in filled
-        )
+        matches = sum(any(kw in t.lower() for kw in keywords) for t in filled)
         return matches / len(filled)

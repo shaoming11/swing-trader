@@ -10,6 +10,7 @@ Tests retrieval quality across multiple dimensions:
 Usage:
     PYTHONPATH=src python tests/eval_rag.py
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -261,7 +262,9 @@ async def measure_rerank_lift() -> dict:
         "raw_result_count": len(raw_results),
         "top10_overlap": overlap,
         "top10_overlap_pct": f"{overlap / 10 * 100:.0f}%",
-        "mean_rank_displacement": f"{sum(displacements) / len(displacements):.1f}" if displacements else "n/a",
+        "mean_rank_displacement": f"{sum(displacements) / len(displacements):.1f}"
+        if displacements
+        else "n/a",
         "rerank_scores_top5": [round(r.get("rerank_score", 0), 3) for r in reranked[:5]],
         "embed_scores_top5": [round(r.get("score", 0), 3) for r in embed_ranked[:5]],
         "above_threshold_count": len(above_threshold),
@@ -300,7 +303,9 @@ async def main():
         results.append(result)
         status = "PASS" if result.passed else "FAIL"
         print(f"  [{status}] {result.name}")
-        print(f"         retrieved={result.chunks_retrieved}  used={result.chunks_used}  latency={result.latency_s:.2f}s")
+        print(
+            f"         retrieved={result.chunks_retrieved}  used={result.chunks_used}  latency={result.latency_s:.2f}s"
+        )
         if result.top_scores:
             print(f"         top rerank scores: {[round(s, 3) for s in result.top_scores]}")
         if result.source_type_dist:
@@ -327,8 +332,8 @@ async def main():
 
     print(f"  Cases:   {passed}/{len(results)} passed, {failed} failed")
     print(f"  Avg latency: {avg_latency:.2f}s")
-    print(f"  Avg chunks retrieved: {sum(r.chunks_retrieved for r in results)/len(results):.1f}")
-    print(f"  Avg chunks used: {sum(r.chunks_used for r in results)/len(results):.1f}")
+    print(f"  Avg chunks retrieved: {sum(r.chunks_retrieved for r in results) / len(results):.1f}")
+    print(f"  Avg chunks used: {sum(r.chunks_used for r in results) / len(results):.1f}")
 
     # Sentiment diversity (non-empty cases)
     all_sentiments: dict[str, int] = {}
@@ -342,10 +347,10 @@ async def main():
     non_empty = [r for r in results if r.chunks_retrieved > 0]
     if non_empty:
         util = sum(r.chunks_used / r.chunks_retrieved for r in non_empty) / len(non_empty)
-        print(f"  Avg utilization (used/retrieved): {util*100:.1f}%")
+        print(f"  Avg utilization (used/retrieved): {util * 100:.1f}%")
 
     if failed:
-        print(f"\n  FAILED CASES:")
+        print("\n  FAILED CASES:")
         for r in results:
             if not r.passed:
                 print(f"    - {r.name}: {r.failure_reason}")

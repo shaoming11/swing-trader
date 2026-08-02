@@ -10,6 +10,7 @@ Sources:
     FRED         — macro indicators as corpus entries
     StockTwits   — social sentiment (unauthenticated, recent only)
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -48,6 +49,7 @@ async def _get(client: httpx.AsyncClient, url: str, params: dict) -> dict:
 
 
 # ── Polygon.io News ────────────────────────────────────────────────────────────
+
 
 async def pull_polygon_news(
     ticker: str,
@@ -95,16 +97,18 @@ async def pull_polygon_news(
                 body_parts.append(f"Published by {publisher}.")
                 body = "\n\n".join(body_parts)
 
-                articles.append({
-                    "headline": item.get("title", ""),
-                    "body": body,
-                    "url": item.get("article_url", ""),
-                    "date": pub_date,
-                    "tickers": [ticker.upper()],
-                    "source": publisher,
-                    "source_type": "news",
-                    "extra_meta": {},
-                })
+                articles.append(
+                    {
+                        "headline": item.get("title", ""),
+                        "body": body,
+                        "url": item.get("article_url", ""),
+                        "date": pub_date,
+                        "tickers": [ticker.upper()],
+                        "source": publisher,
+                        "source_type": "news",
+                        "extra_meta": {},
+                    }
+                )
 
             next_url = data.get("next_url") or ""
             if not next_url:
@@ -118,6 +122,7 @@ async def pull_polygon_news(
 
 
 # ── GDELT ──────────────────────────────────────────────────────────────────────
+
 
 async def pull_gdelt_news(
     ticker: str,
@@ -160,33 +165,36 @@ async def pull_gdelt_news(
         country = item.get("sourcecountry", "")
 
         body_parts = [
-            f"**GDELT Indexed Article**",
-            f"",
+            "**GDELT Indexed Article**",
+            "",
             title,
-            f"",
+            "",
             f"Source domain: {domain}",
         ]
         if country:
             body_parts.append(f"Source country: {country}")
         body_parts.append(f"Published: {art_date}")
         body_parts.append(f"Full article: {url}")
-        body_parts.append(f"Indexed by the GDELT Project — global events and geopolitics monitor.")
+        body_parts.append("Indexed by the GDELT Project — global events and geopolitics monitor.")
 
-        articles.append({
-            "headline": title,
-            "body": "\n".join(body_parts),
-            "url": url,
-            "date": art_date,
-            "tickers": [ticker.upper()],
-            "source": "GDELT",
-            "source_type": "news",
-            "extra_meta": {},
-        })
+        articles.append(
+            {
+                "headline": title,
+                "body": "\n".join(body_parts),
+                "url": url,
+                "date": art_date,
+                "tickers": [ticker.upper()],
+                "source": "GDELT",
+                "source_type": "news",
+                "extra_meta": {},
+            }
+        )
 
     return articles
 
 
 # ── Analyst Ratings (yfinance) ─────────────────────────────────────────────────
+
 
 async def pull_analyst(
     ticker: str,
@@ -235,18 +243,21 @@ async def pull_analyst(
                         body_parts.append(f"Prior target: ${prior_pt:.0f}")
                     if pt_action:
                         body_parts.append(f"Target action: {pt_action}")
-                body_parts.append(f"Source: yfinance analyst upgrades/downgrades.")
+                body_parts.append("Source: yfinance analyst upgrades/downgrades.")
 
-                articles.append({
-                    "headline": f"{firm}: {action} {ticker_up}" + (f" — {from_grade}->{to_grade}" if from_grade and to_grade else ""),
-                    "body": "\n".join(body_parts),
-                    "url": "",
-                    "date": ud_date,
-                    "tickers": [ticker_up],
-                    "source": firm,
-                    "source_type": "analyst",
-                    "extra_meta": {},
-                })
+                articles.append(
+                    {
+                        "headline": f"{firm}: {action} {ticker_up}"
+                        + (f" — {from_grade}->{to_grade}" if from_grade and to_grade else ""),
+                        "body": "\n".join(body_parts),
+                        "url": "",
+                        "date": ud_date,
+                        "tickers": [ticker_up],
+                        "source": firm,
+                        "source_type": "analyst",
+                        "extra_meta": {},
+                    }
+                )
 
         # ── Consensus recommendations (last 4 months) ─────────────────────
         recs = t.recommendations
@@ -263,18 +274,20 @@ async def pull_analyst(
                     f"**Analyst Consensus — {ticker_up} — period {period}**",
                     "",
                     f"Strong Buy: {strong_buy} | Buy: {buy} | Hold: {hold} | Sell: {sell} | Strong Sell: {strong_sell}",
-                    f"Source: yfinance analyst recommendations.",
+                    "Source: yfinance analyst recommendations.",
                 ]
-                articles.append({
-                    "headline": f"Analyst consensus {ticker_up}: {buy} buy / {hold} hold / {sell} sell (period {period})",
-                    "body": "\n".join(body_parts),
-                    "url": "",
-                    "date": str(date.today()),
-                    "tickers": [ticker_up],
-                    "source": "yfinance",
-                    "source_type": "analyst",
-                    "extra_meta": {},
-                })
+                articles.append(
+                    {
+                        "headline": f"Analyst consensus {ticker_up}: {buy} buy / {hold} hold / {sell} sell (period {period})",
+                        "body": "\n".join(body_parts),
+                        "url": "",
+                        "date": str(date.today()),
+                        "tickers": [ticker_up],
+                        "source": "yfinance",
+                        "source_type": "analyst",
+                        "extra_meta": {},
+                    }
+                )
 
         return articles
 
@@ -290,10 +303,10 @@ pull_fmp_analyst = pull_analyst
 _FRED_SERIES = [
     ("CPIAUCSL", "CPI (Consumer Price Index)"),
     ("FEDFUNDS", "Fed Funds Rate"),
-    ("UNRATE",   "Unemployment Rate"),
-    ("GDP",      "GDP"),
-    ("DGS10",    "10-Year Treasury Yield"),
-    ("T10YIE",   "10-Year Breakeven Inflation Rate"),
+    ("UNRATE", "Unemployment Rate"),
+    ("GDP", "GDP"),
+    ("DGS10", "10-Year Treasury Yield"),
+    ("T10YIE", "10-Year Breakeven Inflation Rate"),
 ]
 
 
@@ -327,7 +340,9 @@ async def pull_fred_macro_corpus(
             except Exception:
                 continue
 
-            obs = [o for o in (data.get("observations") or []) if o.get("value") not in (".", None, "")]
+            obs = [
+                o for o in (data.get("observations") or []) if o.get("value") not in (".", None, "")
+            ]
             if not obs:
                 continue
 
@@ -338,30 +353,35 @@ async def pull_fred_macro_corpus(
 
             body_parts = [
                 f"**Macro Indicator: {label}**",
-                f"",
+                "",
                 f"Latest value: {value} (as of {obs_date})",
             ]
             if prior and prior["date"] != obs_date:
                 body_parts.append(f"Prior reading: {prior['value']} (as of {prior['date']})")
             body_parts.append(f"Period: {window_start} to {window_end}")
-            body_parts.append(f"")
-            body_parts.append(f"Series: {series_id} — Federal Reserve Economic Data (FRED), St. Louis Fed.")
+            body_parts.append("")
+            body_parts.append(
+                f"Series: {series_id} — Federal Reserve Economic Data (FRED), St. Louis Fed."
+            )
 
-            articles.append({
-                "headline": f"Macro: {label} at {value} ({obs_date})",
-                "body": "\n".join(body_parts),
-                "url": f"https://fred.stlouisfed.org/series/{series_id}",
-                "date": obs_date,
-                "tickers": [],
-                "source": "FRED",
-                "source_type": "macro",
-                "extra_meta": {"series_id": series_id},
-            })
+            articles.append(
+                {
+                    "headline": f"Macro: {label} at {value} ({obs_date})",
+                    "body": "\n".join(body_parts),
+                    "url": f"https://fred.stlouisfed.org/series/{series_id}",
+                    "date": obs_date,
+                    "tickers": [],
+                    "source": "FRED",
+                    "source_type": "macro",
+                    "extra_meta": {"series_id": series_id},
+                }
+            )
 
     return articles
 
 
 # ── StockTwits ─────────────────────────────────────────────────────────────────
+
 
 async def pull_stocktwits(
     ticker: str,
@@ -394,6 +414,7 @@ async def pull_stocktwits(
 
     # Aggregate into daily buckets
     from collections import defaultdict
+
     daily: dict[str, list[dict]] = defaultdict(list)
     for msg in messages:
         created = str(msg.get("created_at", ""))[:10]
@@ -403,11 +424,13 @@ async def pull_stocktwits(
     articles = []
     for day, msgs in sorted(daily.items()):
         bullish = sum(
-            1 for m in msgs
+            1
+            for m in msgs
             if ((m.get("entities") or {}).get("sentiment") or {}).get("basic") == "Bullish"
         )
         bearish = sum(
-            1 for m in msgs
+            1
+            for m in msgs
             if ((m.get("entities") or {}).get("sentiment") or {}).get("basic") == "Bearish"
         )
         total = len(msgs)
@@ -416,29 +439,31 @@ async def pull_stocktwits(
 
         body_parts = [
             f"**StockTwits Sentiment Summary — {ticker.upper()} — {day}**",
-            f"",
+            "",
             f"Total messages: {total} | Bullish: {bullish} | Bearish: {bearish} | Neutral: {total - bullish - bearish}",
-            f"",
+            "",
             "Top messages:",
         ]
         for text in top_texts:
             body_parts.append(f"- {text}")
-        body_parts.append(f"")
+        body_parts.append("")
         body_parts.append(f"Source: StockTwits social sentiment stream for {ticker.upper()}.")
 
-        articles.append({
-            "headline": f"StockTwits {ticker.upper()} {day}: {bullish} bullish / {bearish} bearish / {total} total",
-            "body": "\n".join(body_parts),
-            "url": f"https://stocktwits.com/symbol/{ticker.upper()}",
-            "date": day,
-            "tickers": [ticker.upper()],
-            "source": "StockTwits",
-            "source_type": "social",
-            "extra_meta": {
-                "bullish_count": bullish,
-                "bearish_count": bearish,
-                "total_messages": total,
-            },
-        })
+        articles.append(
+            {
+                "headline": f"StockTwits {ticker.upper()} {day}: {bullish} bullish / {bearish} bearish / {total} total",
+                "body": "\n".join(body_parts),
+                "url": f"https://stocktwits.com/symbol/{ticker.upper()}",
+                "date": day,
+                "tickers": [ticker.upper()],
+                "source": "StockTwits",
+                "source_type": "social",
+                "extra_meta": {
+                    "bullish_count": bullish,
+                    "bearish_count": bearish,
+                    "total_messages": total,
+                },
+            }
+        )
 
     return articles

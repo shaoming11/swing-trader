@@ -4,9 +4,9 @@ POST  /corpus/backfill  — trigger corpus backfill for a list of tickers
 POST  /corpus/index     — trigger RAG indexer on existing corpus files
 GET   /corpus/status    — current corpus stats (file counts, index status)
 """
+
 from __future__ import annotations
 
-import asyncio
 import json
 import time
 from datetime import date
@@ -50,12 +50,14 @@ async def backfill_corpus(req: BackfillRequest):
                 run_tagger=req.run_tagger,
                 corpus_root=_CORPUS_ROOT,
             )
-            yield _sse({
-                "event": "backfill_done",
-                "written": result["written"],
-                "skipped": result["skipped"],
-                "ts": time.time(),
-            })
+            yield _sse(
+                {
+                    "event": "backfill_done",
+                    "written": result["written"],
+                    "skipped": result["skipped"],
+                    "ts": time.time(),
+                }
+            )
         except Exception as exc:
             yield _sse({"event": "error", "message": str(exc), "ts": time.time()})
             yield _sse({"event": "done", "ts": time.time()})
@@ -65,11 +67,13 @@ async def backfill_corpus(req: BackfillRequest):
             yield _sse({"event": "indexing_start", "ts": time.time()})
             try:
                 indexed = await index_new_files(corpus_root=_CORPUS_ROOT)
-                yield _sse({
-                    "event": "indexing_done",
-                    "indexed": indexed,
-                    "ts": time.time(),
-                })
+                yield _sse(
+                    {
+                        "event": "indexing_done",
+                        "indexed": indexed,
+                        "ts": time.time(),
+                    }
+                )
             except Exception as exc:
                 yield _sse({"event": "error", "message": f"Indexer: {exc}", "ts": time.time()})
 
@@ -128,6 +132,7 @@ async def corpus_status():
     vector_count = 0
     try:
         from swing_trader.rag.store import get_vector_store
+
         store = get_vector_store()
         vector_count = store._col.count()
     except Exception:

@@ -6,6 +6,7 @@ Handles:
 - Quality check: reject files below minimum word count
 - Rejected files written to corpus/_rejected/ for audit
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -23,10 +24,10 @@ _URL_INDEX_PATH = _CORPUS_ROOT / ".url_index.json"
 
 # Source-type minimums — descriptions/summaries are shorter than full articles
 _MIN_WORDS: dict[str, int] = {
-    "news":     20,
-    "analyst":  8,
-    "macro":    10,
-    "social":   15,
+    "news": 20,
+    "analyst": 8,
+    "macro": 10,
+    "social": 15,
 }
 _MIN_WORDS_DEFAULT = 20
 

@@ -9,6 +9,7 @@ Cache layout:
       macro/{series_id}_{YYYY-MM}.json           e.g. CPIAUCSL_2024-03.json
       price/{ticker}_{window_start}_{window_end}.json
 """
+
 from __future__ import annotations
 
 import json
@@ -92,6 +93,7 @@ def set_fomc(year: int, data: Any) -> None:
 
 
 # ── Quarter-level cache (fundamentals + macro merged per quarter) ─────────────
+
 
 def get_quarter(ticker: str, quarter: str) -> Any | None:
     """quarter format: '2024Q4'. Returns combined {fundamentals, macro} dict or None."""

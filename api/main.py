@@ -6,6 +6,7 @@ Start:
 Loads .env automatically via python-dotenv so the server works without manually
 exporting variables in the shell.
 """
+
 from __future__ import annotations
 
 import logging
@@ -53,6 +54,7 @@ def _validate_config() -> None:
 
 # ── CORS origins ──────────────────────────────────────────────────────────────
 
+
 def _get_cors_origins() -> list[str]:
     """Parse CORS_ORIGINS env var. Defaults to localhost for dev."""
     raw = os.getenv("CORS_ORIGINS", "")
@@ -68,10 +70,12 @@ def _get_cors_origins() -> list[str]:
 
 # ── Health check helpers ──────────────────────────────────────────────────────
 
+
 async def _check_db() -> dict:
     """Ping the database and return status."""
     try:
         from swing_trader.db.pool import get_pool
+
         pool = await get_pool()
         async with pool.acquire() as conn:
             await conn.fetchval("SELECT 1")
@@ -84,6 +88,7 @@ async def _check_vector_store() -> dict:
     """Ping the vector store and return status."""
     try:
         from swing_trader.rag.store import get_vector_store
+
         store = get_vector_store()
         count = store._col.count()
         return {"status": "ok", "chunks": count}
@@ -93,6 +98,7 @@ async def _check_vector_store() -> dict:
 
 # ── App lifecycle ─────────────────────────────────────────────────────────────
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     _validate_config()
@@ -101,6 +107,7 @@ async def lifespan(app: FastAPI):
     # Tear down the DB pool on shutdown so connections drain cleanly.
     try:
         from swing_trader.db.pool import close_pool
+
         await close_pool()
     except Exception:
         pass

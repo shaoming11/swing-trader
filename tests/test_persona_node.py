@@ -5,6 +5,7 @@ Usage:
 
 Requires GROQ_API_KEY in .env (makes real LLM calls).
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -61,8 +62,8 @@ MOCK_QUAL_ITEMS = [
         sentiment_label="bullish",
         sentiment_reason="Price target raised to $220 on strong services growth",
         summary="Morgan Stanley analyst raised AAPL price target from $200 to $220, "
-                "citing accelerating services revenue and improving iPhone ASPs in "
-                "emerging markets.",
+        "citing accelerating services revenue and improving iPhone ASPs in "
+        "emerging markets.",
         relevance_score=0.92,
     ),
     QualItem(
@@ -72,8 +73,8 @@ MOCK_QUAL_ITEMS = [
         sentiment_label="bearish",
         sentiment_reason="iPhone shipments declined 3.7% in China amid Huawei competition",
         summary="Apple's iPhone shipments in China fell 3.7% in Q4 2023 as Huawei's "
-                "Mate 60 Pro gained market share. China revenue remains a key risk "
-                "for AAPL's growth narrative.",
+        "Mate 60 Pro gained market share. China revenue remains a key risk "
+        "for AAPL's growth narrative.",
         relevance_score=0.87,
     ),
     QualItem(
@@ -83,8 +84,8 @@ MOCK_QUAL_ITEMS = [
         sentiment_label="neutral",
         sentiment_reason="Fed held rates, signaled patience on cuts — no immediate catalyst",
         summary="The Federal Reserve held the federal funds rate at 5.25-5.50% and "
-                "removed language about potential further tightening, but Chair Powell "
-                "pushed back on a March rate cut.",
+        "removed language about potential further tightening, but Chair Powell "
+        "pushed back on a March rate cut.",
         relevance_score=0.81,
     ),
     QualItem(
@@ -94,13 +95,14 @@ MOCK_QUAL_ITEMS = [
         sentiment_label="bullish",
         sentiment_reason="Retail sentiment overwhelmingly positive post-earnings",
         summary="StockTwits sentiment gauge showed 78% bullish on AAPL following the "
-                "Q1 earnings beat. Message volume spiked 3x above 30-day average.",
+        "Q1 earnings beat. Message volume spiked 3x above 30-day average.",
         relevance_score=0.65,
     ),
 ]
 
 
 # ── Run ──────────────────────────────────────────────────────────────────────
+
 
 async def main() -> None:
     numeric_block = NumericBlock(
@@ -143,8 +145,7 @@ async def main() -> None:
         print(text if text else "(empty)")
         print()
 
-    filled = sum(1 for p in ("bull", "bear", "macro", "technicals")
-                 if getattr(persona_outputs, p))
+    filled = sum(1 for p in ("bull", "bear", "macro", "technicals") if getattr(persona_outputs, p))
     print(f"Personas filled: {filled}/4")
     assert filled == 4, f"Expected 4 personas filled, got {filled}"
     assert state["composed_prompt"], "composed_prompt should be non-empty"

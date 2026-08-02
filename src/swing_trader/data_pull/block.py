@@ -4,6 +4,7 @@ Accepts one or more (label, qstart, qend, FundamentalsResult, MacroResult) tuple
 renders each as a markdown section, and joins them with a horizontal rule.
 No LLM, no summarization.
 """
+
 from __future__ import annotations
 
 from datetime import date
@@ -51,6 +52,7 @@ def build_numeric_block(
 
 
 # ── Quarter renderer ──────────────────────────────────────────────────────────
+
 
 def _render_quarter(
     ticker: str,
@@ -122,7 +124,9 @@ def _render_quarter(
         lines.append("| Indicator | Start | End | Δ |")
         lines.append("|-----------|-------|-----|---|")
         for dp in m.series:
-            start_val = f"{dp.value_start:.2f} {dp.unit}".strip() if dp.value_start is not None else "—"
+            start_val = (
+                f"{dp.value_start:.2f} {dp.unit}".strip() if dp.value_start is not None else "—"
+            )
             end_val = f"{dp.value_end:.2f} {dp.unit}".strip() if dp.value_end is not None else "—"
             if dp.value_start is not None and dp.value_end is not None:
                 delta = dp.value_end - dp.value_start
@@ -152,6 +156,7 @@ def _render_quarter(
 
 
 # ── Formatting helpers ────────────────────────────────────────────────────────
+
 
 def _fmt_dollar(v: float | None) -> str:
     return f"${v:.2f}" if v is not None else "N/A"

@@ -6,11 +6,11 @@ Usage:
     python main.py --batch
     python main.py --batch --watchlist path/to/watchlist.yaml
 """
+
 from __future__ import annotations
 
 import argparse
 import asyncio
-import json
 import logging
 import os
 from datetime import date
@@ -38,6 +38,7 @@ _traceable = None
 if os.getenv("LANGCHAIN_TRACING_V2", "").lower() == "true":
     try:
         from langsmith import traceable
+
         _traceable = traceable
     except ImportError:
         pass
@@ -60,10 +61,15 @@ async def _run_pipeline_inner(
         thesis_hint=thesis_hint,
     )
 
-    log.info("run_id=%s  ticker=%s  window=%s→%s", state["run_id"], ticker, window_start, window_end)
+    log.info(
+        "run_id=%s  ticker=%s  window=%s→%s", state["run_id"], ticker, window_start, window_end
+    )
 
     state = await data_pull_node(state)
-    log.info("data_pull done  gaps=%s", len(state["numeric_block"].data_gaps) if state["numeric_block"] else "?")
+    log.info(
+        "data_pull done  gaps=%s",
+        len(state["numeric_block"].data_gaps) if state["numeric_block"] else "?",
+    )
 
     state = await rag_retrieval_node(state)
     log.info(
@@ -75,8 +81,11 @@ async def _run_pipeline_inner(
     state = await persona_reasoning_node(state)
     log.info(
         "persona_reasoning done  personas_filled=%d  prompt_len=%d",
-        sum(1 for p in ("bull", "bear", "macro", "technicals")
-            if getattr(state["persona_outputs"], p, "")),
+        sum(
+            1
+            for p in ("bull", "bear", "macro", "technicals")
+            if getattr(state["persona_outputs"], p, "")
+        ),
         len(state.get("composed_prompt", "")),
     )
 
@@ -92,7 +101,9 @@ async def _run_pipeline_inner(
     failed = [c for c in checks if not c.passed]
     log.info(
         "guardrails done  checks=%d  failed=%d  retries=%d  cancelled=%s",
-        len(checks), len(failed), state.get("guardrail_retries", 0),
+        len(checks),
+        len(failed),
+        state.get("guardrail_retries", 0),
         state.get("pipeline_cancelled", False),
     )
 
@@ -145,21 +156,40 @@ def _parse_date(s: str) -> date:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Swing-trader pipeline")
     parser.add_argument("ticker", nargs="?", default=None, help="Stock ticker, e.g. AAPL")
-    parser.add_argument("window_start", nargs="?", type=_parse_date, default=None,
-                        help="Window start date YYYY-MM-DD (default: last completed quarter)")
-    parser.add_argument("window_end", nargs="?", type=_parse_date, default=None,
-                        help="Window end date YYYY-MM-DD (default: last completed quarter)")
+    parser.add_argument(
+        "window_start",
+        nargs="?",
+        type=_parse_date,
+        default=None,
+        help="Window start date YYYY-MM-DD (default: last completed quarter)",
+    )
+    parser.add_argument(
+        "window_end",
+        nargs="?",
+        type=_parse_date,
+        default=None,
+        help="Window end date YYYY-MM-DD (default: last completed quarter)",
+    )
     parser.add_argument("--run-type", default="live", choices=["live", "backfill", "eval"])
     parser.add_argument("--user-id", default=None)
     parser.add_argument("--thesis-hint", default=None)
     parser.add_argument("--metrics-port", type=int, default=9090)
-    parser.add_argument("--no-metrics", action="store_true", help="Skip starting the Prometheus server")
-    parser.add_argument("--batch", action="store_true", help="Run all tickers in watchlist sequentially")
-    parser.add_argument("--watchlist", default="watchlist.yaml", help="Path to watchlist YAML (default: watchlist.yaml)")
+    parser.add_argument(
+        "--no-metrics", action="store_true", help="Skip starting the Prometheus server"
+    )
+    parser.add_argument(
+        "--batch", action="store_true", help="Run all tickers in watchlist sequentially"
+    )
+    parser.add_argument(
+        "--watchlist",
+        default="watchlist.yaml",
+        help="Path to watchlist YAML (default: watchlist.yaml)",
+    )
     args = parser.parse_args()
 
     if not args.no_metrics:
         import os
+
         os.environ.setdefault("METRICS_PORT", str(args.metrics_port))
         start_metrics_server()
         log.info("Prometheus metrics on :%s/metrics", args.metrics_port)
@@ -167,10 +197,12 @@ def main() -> None:
     if args.batch:
         from swing_trader.batch import run_batch
 
-        results = asyncio.run(run_batch(
-            watchlist_path=args.watchlist,
-            run_type_override=args.run_type if args.run_type != "live" else None,
-        ))
+        results = asyncio.run(
+            run_batch(
+                watchlist_path=args.watchlist,
+                run_type_override=args.run_type if args.run_type != "live" else None,
+            )
+        )
         print(f"\n── Batch summary ({len(results)} tickers) ──")
         for r in results:
             status = r["status"]

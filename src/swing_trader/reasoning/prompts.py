@@ -1,4 +1,5 @@
 """Composed prompt builder and persona system prompts."""
+
 from __future__ import annotations
 
 from swing_trader.schemas.pipeline import NumericBlock, QualitativeBlock
@@ -43,6 +44,7 @@ USER_PROMPT_TEMPLATE = (
 
 
 # ── Composed prompt builder ──────────────────────────────────────────────────
+
 
 def build_composed_prompt(
     numeric_block: NumericBlock | None,

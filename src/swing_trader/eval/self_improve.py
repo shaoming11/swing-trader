@@ -13,11 +13,11 @@ Usage:
     python -m swing_trader.eval.self_improve --quarters 2025-Q1 2025-Q2
     python -m swing_trader.eval.self_improve --watchlist watchlist.yaml --max-iters 3
 """
+
 from __future__ import annotations
 
 import argparse
 import asyncio
-import copy
 import json
 import logging
 import time
@@ -43,6 +43,7 @@ BIG_GAP_THRESHOLD = 0.20
 
 
 # ── Quarter date ranges ──────────────────────────────────────────────────────
+
 
 def quarter_to_dates(q: str) -> tuple[date, date]:
     """Convert '2025-Q1' → (date(2024,12,31), date(2025,3,31)).
@@ -78,6 +79,7 @@ def default_eval_quarters() -> list[str]:
 
 
 # ── Run pipeline for a quarter ───────────────────────────────────────────────
+
 
 async def _run_quarter(
     tickers: list[str],
@@ -310,6 +312,7 @@ def _save_report(quarter: str, iteration: int, report: QuarterReport) -> Path:
 
 # ── Main loop ────────────────────────────────────────────────────────────────
 
+
 async def run_eval_loop(
     tickers: list[str],
     quarters: list[str],
@@ -363,7 +366,8 @@ async def run_eval_loop(
             if iteration == max_iterations:
                 log.warning(
                     "EXHAUSTED %d iterations for %s — still failing: %s",
-                    max_iterations, quarter,
+                    max_iterations,
+                    quarter,
                     [m.name for m in report.failing_metrics],
                 )
                 _alert_user(quarter, report, reason="max_iterations_exhausted")
@@ -375,7 +379,9 @@ async def run_eval_loop(
                 if worst and worst.gap > BIG_GAP_THRESHOLD:
                     log.warning(
                         "BIG GAP on new quarter %s: %s gap=%.3f — alerting user",
-                        quarter, worst.name, worst.gap,
+                        quarter,
+                        worst.name,
+                        worst.gap,
                     )
                     _alert_user(quarter, report, reason="big_gap_new_quarter")
                     # Still try to self-improve, but user is informed
@@ -383,15 +389,19 @@ async def run_eval_loop(
             # Generate and apply prompt patch
             log.info("Generating prompt patch...")
             patch = await _generate_prompt_patch(
-                report, iteration, max_iterations, total_patches,
+                report,
+                iteration,
+                max_iterations,
+                total_patches,
             )
             if patch:
                 reasoning = patch.get("reasoning", "(no reasoning)")
                 log.info("Rewriter reasoning: %s", reasoning)
                 applied = _apply_patch(patch)
                 total_patches += applied
-                log.info("Applied %d patches (total across all quarters: %d)",
-                         applied, total_patches)
+                log.info(
+                    "Applied %d patches (total across all quarters: %d)", applied, total_patches
+                )
             else:
                 log.warning("Rewriter returned no patch — retrying with same prompts")
 
@@ -405,8 +415,10 @@ async def run_eval_loop(
     for q, report in all_reports.items():
         status = "PASS" if report.all_passed else "FAIL"
         failing = [m.name for m in report.failing_metrics]
-        print(f"  {q}: {status}  scored={report.scored_runs}"
-              + (f"  failing={failing}" if failing else ""))
+        print(
+            f"  {q}: {status}  scored={report.scored_runs}"
+            + (f"  failing={failing}" if failing else "")
+        )
     print(f"\nTotal prompt patches applied: {total_patches}")
 
     # Save final prompts
@@ -416,6 +428,7 @@ async def run_eval_loop(
 
 
 # ── Streaming variant (for dashboard SSE) ────────────────────────────────────
+
 
 async def run_eval_loop_streaming(
     tickers: list[str],
@@ -429,17 +442,20 @@ async def run_eval_loop_streaming(
       loop_start, quarter_start, iteration_start, iteration_done,
       patch_applied, quarter_done, alert, loop_done
     """
+
     async def _emit(event: dict):
         if emit:
             await emit(event)
 
-    await _emit({
-        "event": "loop_start",
-        "quarters": quarters,
-        "tickers": tickers,
-        "max_iterations": max_iterations,
-        "ts": time.monotonic(),
-    })
+    await _emit(
+        {
+            "event": "loop_start",
+            "quarters": quarters,
+            "tickers": tickers,
+            "max_iterations": max_iterations,
+            "ts": time.monotonic(),
+        }
+    )
 
     all_reports: dict[str, dict] = {}
     total_patches = 0
@@ -447,24 +463,28 @@ async def run_eval_loop_streaming(
 
     for quarter in quarters:
         window_start, window_end = quarter_to_dates(quarter)
-        await _emit({
-            "event": "quarter_start",
-            "quarter": quarter,
-            "window_start": str(window_start),
-            "window_end": str(window_end),
-            "ts": time.monotonic(),
-        })
+        await _emit(
+            {
+                "event": "quarter_start",
+                "quarter": quarter,
+                "window_start": str(window_start),
+                "window_end": str(window_end),
+                "ts": time.monotonic(),
+            }
+        )
 
         best_report: QuarterReport | None = None
 
         for iteration in range(1, max_iterations + 1):
-            await _emit({
-                "event": "iteration_start",
-                "quarter": quarter,
-                "iteration": iteration,
-                "max_iterations": max_iterations,
-                "ts": time.monotonic(),
-            })
+            await _emit(
+                {
+                    "event": "iteration_start",
+                    "quarter": quarter,
+                    "iteration": iteration,
+                    "max_iterations": max_iterations,
+                    "ts": time.monotonic(),
+                }
+            )
 
             t0 = time.monotonic()
             _save_prompts_snapshot(quarter, iteration)
@@ -484,92 +504,109 @@ async def run_eval_loop_streaming(
                 for m in report.metrics
             }
 
-            await _emit({
-                "event": "iteration_done",
-                "quarter": quarter,
-                "iteration": iteration,
-                "elapsed_s": elapsed,
-                "all_passed": report.all_passed,
-                "scored_runs": report.scored_runs,
-                "total_runs": report.total_runs,
-                "cancelled_runs": report.cancelled_runs,
-                "metrics": metrics_dict,
-                "driver_miss_rates": {
-                    k: round(v, 4) for k, v in report.driver_miss_rates.items()
-                },
-                "worst_tickers": dict(
-                    list(sorted(
-                        report.ticker_failures.items(),
-                        key=lambda x: len(x[1]),
-                        reverse=True,
-                    ))[:5]
-                ),
-                "ts": time.monotonic(),
-            })
+            await _emit(
+                {
+                    "event": "iteration_done",
+                    "quarter": quarter,
+                    "iteration": iteration,
+                    "elapsed_s": elapsed,
+                    "all_passed": report.all_passed,
+                    "scored_runs": report.scored_runs,
+                    "total_runs": report.total_runs,
+                    "cancelled_runs": report.cancelled_runs,
+                    "metrics": metrics_dict,
+                    "driver_miss_rates": {
+                        k: round(v, 4) for k, v in report.driver_miss_rates.items()
+                    },
+                    "worst_tickers": dict(
+                        list(
+                            sorted(
+                                report.ticker_failures.items(),
+                                key=lambda x: len(x[1]),
+                                reverse=True,
+                            )
+                        )[:5]
+                    ),
+                    "ts": time.monotonic(),
+                }
+            )
 
             if report.all_passed:
                 break
 
             if iteration == max_iterations:
-                await _emit({
-                    "event": "alert",
-                    "quarter": quarter,
-                    "reason": "max_iterations_exhausted",
-                    "failing": [m.name for m in report.failing_metrics],
-                    "ts": time.monotonic(),
-                })
+                await _emit(
+                    {
+                        "event": "alert",
+                        "quarter": quarter,
+                        "reason": "max_iterations_exhausted",
+                        "failing": [m.name for m in report.failing_metrics],
+                        "ts": time.monotonic(),
+                    }
+                )
                 break
 
             if not first_quarter and iteration == 1:
                 worst = report.worst_metric
                 if worst and worst.gap > BIG_GAP_THRESHOLD:
-                    await _emit({
-                        "event": "alert",
-                        "quarter": quarter,
-                        "reason": "big_gap_new_quarter",
-                        "metric": worst.name,
-                        "gap": round(worst.gap, 4),
-                        "ts": time.monotonic(),
-                    })
+                    await _emit(
+                        {
+                            "event": "alert",
+                            "quarter": quarter,
+                            "reason": "big_gap_new_quarter",
+                            "metric": worst.name,
+                            "gap": round(worst.gap, 4),
+                            "ts": time.monotonic(),
+                        }
+                    )
 
             # Generate and apply prompt patch
             patch = await _generate_prompt_patch(
-                report, iteration, max_iterations, total_patches,
+                report,
+                iteration,
+                max_iterations,
+                total_patches,
             )
             if patch:
                 applied = _apply_patch(patch)
                 total_patches += applied
-                await _emit({
-                    "event": "patch_applied",
-                    "quarter": quarter,
-                    "iteration": iteration,
-                    "reasoning": patch.get("reasoning", ""),
-                    "patches_this_round": applied,
-                    "total_patches": total_patches,
-                    "ts": time.monotonic(),
-                })
+                await _emit(
+                    {
+                        "event": "patch_applied",
+                        "quarter": quarter,
+                        "iteration": iteration,
+                        "reasoning": patch.get("reasoning", ""),
+                        "patches_this_round": applied,
+                        "total_patches": total_patches,
+                        "ts": time.monotonic(),
+                    }
+                )
 
         all_reports[quarter] = {
             "all_passed": best_report.all_passed if best_report else False,
             "scored_runs": best_report.scored_runs if best_report else 0,
             "failing": [m.name for m in best_report.failing_metrics] if best_report else [],
         }
-        await _emit({
-            "event": "quarter_done",
-            "quarter": quarter,
-            "result": all_reports[quarter],
-            "ts": time.monotonic(),
-        })
+        await _emit(
+            {
+                "event": "quarter_done",
+                "quarter": quarter,
+                "result": all_reports[quarter],
+                "ts": time.monotonic(),
+            }
+        )
         first_quarter = False
 
     _save_prompts_snapshot("final", 0)
 
-    await _emit({
-        "event": "loop_done",
-        "total_patches": total_patches,
-        "quarter_results": all_reports,
-        "ts": time.monotonic(),
-    })
+    await _emit(
+        {
+            "event": "loop_done",
+            "total_patches": total_patches,
+            "quarter_results": all_reports,
+            "ts": time.monotonic(),
+        }
+    )
 
 
 def _alert_user(quarter: str, report: QuarterReport, reason: str) -> None:
@@ -577,35 +614,43 @@ def _alert_user(quarter: str, report: QuarterReport, reason: str) -> None:
     print("\n" + "!" * 60)
     print(f"  ACTION REQUIRED — {reason}")
     print(f"  Quarter: {quarter}")
-    print(f"  Failing metrics:")
+    print("  Failing metrics:")
     for m in report.failing_metrics:
         print(f"    {m.name}: {m.value:.3f} (need {m.benchmark})")
     if report.driver_miss_rates:
         worst_driver = max(report.driver_miss_rates, key=report.driver_miss_rates.get)
         print(f"  Worst driver: {worst_driver} ({report.driver_miss_rates[worst_driver]:.1%} miss)")
     print(f"\n  Review prompt snapshots in: eval_runs/{quarter}/")
-    print(f"  Edit prompts in: src/swing_trader/reasoning/prompts.py")
+    print("  Edit prompts in: src/swing_trader/reasoning/prompts.py")
     print("!" * 60 + "\n")
 
 
 # ── CLI ──────────────────────────────────────────────────────────────────────
 
+
 def main():
     parser = argparse.ArgumentParser(description="Eval self-improvement loop")
     parser.add_argument(
-        "--quarters", nargs="+", default=None,
+        "--quarters",
+        nargs="+",
+        default=None,
         help="Quarters to eval, e.g. 2025-Q1 2025-Q2 (default: last 4 completed)",
     )
     parser.add_argument(
-        "--watchlist", default="watchlist.yaml",
+        "--watchlist",
+        default="watchlist.yaml",
         help="Path to watchlist YAML",
     )
     parser.add_argument(
-        "--max-iters", type=int, default=MAX_ITERATIONS,
+        "--max-iters",
+        type=int,
+        default=MAX_ITERATIONS,
         help=f"Max iterations per quarter (default: {MAX_ITERATIONS})",
     )
     parser.add_argument(
-        "--tickers", nargs="+", default=None,
+        "--tickers",
+        nargs="+",
+        default=None,
         help="Override tickers (instead of watchlist)",
     )
     args = parser.parse_args()
@@ -621,11 +666,16 @@ def main():
         tickers = [t.upper() for t in args.tickers]
     else:
         from swing_trader.batch import load_watchlist
+
         wl = load_watchlist(args.watchlist)
         tickers = wl["tickers"]
 
-    log.info("Eval loop starting: quarters=%s  tickers=%s  max_iters=%d",
-             quarters, tickers, args.max_iters)
+    log.info(
+        "Eval loop starting: quarters=%s  tickers=%s  max_iters=%d",
+        quarters,
+        tickers,
+        args.max_iters,
+    )
 
     asyncio.run(run_eval_loop(tickers, quarters, args.max_iters))
 

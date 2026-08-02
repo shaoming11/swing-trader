@@ -1,0 +1,41 @@
+{
+  "default": [
+    { "series_id": "CPIAUCSL",  "label": "CPI (index)",        "unit": ""   },
+    { "series_id": "FEDFUNDS",  "label": "Fed Funds Rate",     "unit": "%"  },
+    { "series_id": "UNRATE",    "label": "Unemployment Rate",  "unit": "%"  },
+    { "series_id": "GDP",       "label": "GDP",                "unit": "$B" }
+  ],
+  "Technology": [
+    { "series_id": "DGS10",     "label": "10-Year Treasury Yield", "unit": "%" },
+    { "series_id": "FEDFUNDS",  "label": "Fed Funds Rate",         "unit": "%" },
+    { "series_id": "CPIAUCSL",  "label": "CPI (index)",            "unit": ""  }
+  ],
+  "Financials": [
+    { "series_id": "FEDFUNDS",      "label": "Fed Funds Rate",         "unit": "%"   },
+    { "series_id": "DGS10",         "label": "10-Year Treasury Yield", "unit": "%"   },
+    { "series_id": "T10Y2Y",        "label": "10Y-2Y Yield Spread",    "unit": "%"   },
+    { "series_id": "BAMLH0A0HYM2",  "label": "HY OAS Spread",          "unit": "bps" }
+  ],
+  "Real Estate": [
+    { "series_id": "FEDFUNDS",     "label": "Fed Funds Rate",         "unit": "%" },
+    { "series_id": "DGS10",        "label": "10-Year Treasury Yield", "unit": "%" },
+    { "series_id": "MORTGAGE30US", "label": "30-Year Mortgage Rate",  "unit": "%" }
+  ],
+  "Consumer Discretionary": [
+    { "series_id": "UNRATE",   "label": "Unemployment Rate",  "unit": "%"     },
+    { "series_id": "UMCSENT",  "label": "Consumer Sentiment", "unit": "index" },
+    { "series_id": "CPIAUCSL", "label": "CPI (index)",        "unit": ""      }
+  ],
+  "Energy": [
+    { "series_id": "DCOILWTICO", "label": "WTI Crude Oil", "unit": "$/bbl"   },
+    { "series_id": "DHHNGSP",    "label": "Natural Gas",   "unit": "$/MMBtu" }
+  ],
+  "Healthcare": [
+    { "series_id": "CPIMEDSL", "label": "Medical CPI (index)", "unit": "" },
+    { "series_id": "FEDFUNDS", "label": "Fed Funds Rate",      "unit": "%" }
+  ],
+  "Industrials": [
+    { "series_id": "INDPRO",     "label": "Industrial Production Index", "unit": "index" },
+    { "series_id": "DCOILWTICO", "label": "WTI Crude Oil",               "unit": "$/bbl" }
+  ]
+}

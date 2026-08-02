@@ -3,13 +3,13 @@
 PipelineState is a TypedDict consumed by every node in the graph.
 All fields are optional except the inputs (ticker, window_start, window_end).
 """
+
 from __future__ import annotations
 
 import uuid
 from datetime import date
-from typing import Annotated, TypedDict
+from typing import TypedDict
 
-from langgraph.graph.message import add_messages
 
 from swing_trader.window import default_window, validate_window
 from swing_trader.schemas.pipeline import (
@@ -29,7 +29,7 @@ class PipelineState(TypedDict, total=False):
     window_start: date
     window_end: date
     user_id: str | None
-    run_type: str           # live | backfill | eval
+    run_type: str  # live | backfill | eval
     thesis_hint: str | None
 
     # ── Intermediate: data pull ───────────────────────────────────────────────
