@@ -122,7 +122,7 @@ export default function RunsPage() {
   );
 }
 
-function Th({ children }: { children: React.ReactNode }) {
+function Th({ children }: { children?: React.ReactNode }) {
   return <th className="px-4 py-3 text-left font-medium">{children}</th>;
 }
 

@@ -104,7 +104,7 @@ function NodeOutput({ node, output }: { node: string; output: Record<string, unk
             Gaps: {(output.data_gaps as string[]).join(" · ")}
           </div>
         )}
-        {output.rendered_text && (
+        {(output.rendered_text as string) && (
           <pre className="mt-2 max-h-48 overflow-y-auto rounded bg-black/30 p-3 text-xs text-gray-300 whitespace-pre-wrap">
             {output.rendered_text as string}
           </pre>
