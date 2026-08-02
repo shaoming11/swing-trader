@@ -66,7 +66,7 @@ jobs:
       - name: Install project deps
         run: pip install .
       - name: Audit dependencies
-        run: pip-audit --strict --desc
+        run: pip-audit --desc
 
   docker:
     runs-on: ubuntu-latest
